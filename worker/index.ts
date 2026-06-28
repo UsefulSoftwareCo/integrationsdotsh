@@ -1,9 +1,19 @@
 import { detect } from "../src/lib/detect.ts";
-import { mcpHandler } from "./registry.ts";
+
+export { McpDurableObject } from "./mcp-do.ts";
+
+interface DurableObjectStub {
+  fetch: (request: Request) => Promise<Response>;
+}
+interface DurableObjectNamespace {
+  idFromName: (name: string) => unknown;
+  get: (id: unknown) => DurableObjectStub;
+}
 
 export interface Env {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   POSTHOG_KEY: string;
+  MCP: DurableObjectNamespace;
 }
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -28,8 +38,10 @@ export default {
     const url = new URL(request.url);
 
     // MCP server (write-once tool registry) — point Claude/Cursor at /mcp.
+    // Routed through a single Durable Object so the session map persists.
     if (url.pathname === "/mcp") {
-      return mcpHandler(request);
+      const stub = env.MCP.get(env.MCP.idFromName("mcp"));
+      return stub.fetch(request);
     }
 
     // Detection endpoint: run the full agent-readiness battery for a domain.

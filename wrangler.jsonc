@@ -17,5 +17,9 @@
   ],
   "observability": {
     "enabled": true
-  }
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "MCP", "class_name": "McpDurableObject" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["McpDurableObject"] }]
 }
