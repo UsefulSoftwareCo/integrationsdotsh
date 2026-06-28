@@ -82,8 +82,8 @@ export interface Integration {
     provider: string;
     service?: string;
     version: string;
-    swaggerUrl?: string;
-    swaggerYamlUrl?: string;
+    /** The provider's own canonical spec URL (apis.guru `origin`), not the mirror. */
+    specUrl?: string;
     openapiVer: string;
     updated?: string;
     added?: string;

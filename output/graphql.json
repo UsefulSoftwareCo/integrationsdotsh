@@ -6,7 +6,7 @@
     "name": "Brandfolder",
     "description": "Digital asset management platform",
     "url": "https://graphql.brandfolder.com/graphql",
-    "icon": "https://www.google.com/s2/favicons?domain=brandfolder.com&sz=64",
+    "icon": "https://brandfolder.com/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -273,7 +273,7 @@
     "name": "EHRI",
     "description": "Holocaust-related archival materials",
     "url": "https://portal.ehri-project.eu/api/graphql",
-    "icon": "https://www.google.com/s2/favicons?domain=ehri-project.eu&sz=64",
+    "icon": "https://ehri-project.eu/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -351,7 +351,7 @@
     "name": "GraphQL Community Graph",
     "description": "This is an Graph Database full of activity of the GraphQL community, including Twitter, StackOverflow, GitHub, Meetups, Slack.",
     "url": "https://graphql.communitygraph.org/graphql/",
-    "icon": "https://www.google.com/s2/favicons?domain=communitygraph.org&sz=64",
+    "icon": "https://communitygraph.org/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -423,7 +423,7 @@
     "name": "GraphQL Europe",
     "description": "Europe’s first GraphQL conference",
     "url": "https://api.graphql-europe.org/",
-    "icon": "https://www.google.com/s2/favicons?domain=graphql-europe.org&sz=64",
+    "icon": "https://graphql-europe.org/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -489,7 +489,7 @@
     "name": "Gdom",
     "description": "DOM Traversing and Scraping using GraphQL",
     "url": "http://gdom.graphene-python.org/graphql",
-    "icon": "https://www.google.com/s2/favicons?domain=graphene-python.org&sz=64",
+    "icon": "https://graphene-python.org/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -561,7 +561,7 @@
     "name": "GitHub",
     "description": "Web-based Git repository hosting service",
     "url": "https://api.github.com/graphql",
-    "icon": "https://www.google.com/s2/favicons?domain=github.com&sz=64",
+    "icon": "https://github.com/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -658,7 +658,7 @@
     "name": "HIVDB",
     "description": "A curated database to represent, store and analyze HIV drug resistance data",
     "url": "https://hivdb.stanford.edu/graphql",
-    "icon": "https://www.google.com/s2/favicons?domain=stanford.edu&sz=64",
+    "icon": "https://stanford.edu/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -727,7 +727,7 @@
     "name": "Hollowverse",
     "description": "The religions and political views of the influentials.",
     "url": "https://api.hollowverse.com/graphql",
-    "icon": "https://www.google.com/s2/favicons?domain=hollowverse.com&sz=64",
+    "icon": "https://hollowverse.com/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -808,7 +808,7 @@
     "name": "Digitransit HSL",
     "description": "Transit routes and realtime schedules from Helsinki Regional Transport Authority, Finland",
     "url": "https://api.digitransit.fi/routing/v1/routers/hsl/index/graphql",
-    "icon": "https://www.google.com/s2/favicons?domain=digitransit.fi&sz=64",
+    "icon": "https://digitransit.fi/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -896,7 +896,7 @@
     "name": "melodyRepo",
     "description": "Fast and reliable dependency manager for Go",
     "url": "https://api.melody.sh/graphql",
-    "icon": "https://www.google.com/s2/favicons?domain=melody.sh&sz=64",
+    "icon": "https://melody.sh/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -965,7 +965,7 @@
     "name": "React Finland",
     "description": "React Finland API is built with conferences and meetups in mind",
     "url": "https://api.react-finland.fi/graphql",
-    "icon": "https://www.google.com/s2/favicons?domain=react-finland.fi&sz=64",
+    "icon": "https://react-finland.fi/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -1034,7 +1034,7 @@
     "name": "Microsoft Graph (DEMO)",
     "description": "Connect to the data that drives productivity – mail, calendar, contacts, documents, directory, devices, and more.",
     "url": "http://graphql-demo.azurewebsites.net/",
-    "icon": "https://www.google.com/s2/favicons?domain=azurewebsites.net&sz=64",
+    "icon": "https://azurewebsites.net/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -1103,7 +1103,7 @@
     "name": "Shopify Storefront",
     "description": "The Storefront API gives you full creative control to build customized purchasing experiences for your customers.",
     "url": "https://graphql.myshopify.com/api/graphql.json",
-    "icon": "https://www.google.com/s2/favicons?domain=myshopify.com&sz=64",
+    "icon": "https://myshopify.com/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -1385,7 +1385,7 @@
     "name": "Countries",
     "description": "Information about countries, continents, and languages",
     "url": "https://countries.trevorblades.com",
-    "icon": "https://www.google.com/s2/favicons?domain=trevorblades.com&sz=64",
+    "icon": "https://trevorblades.com/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -1548,7 +1548,7 @@
     "name": "Pipefy GraphQL API",
     "description": "The operations excellence platform.",
     "url": "https://api.pipefy.com/graphql",
-    "icon": "https://www.google.com/s2/favicons?domain=pipefy.com&sz=64",
+    "icon": "https://pipefy.com/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"
@@ -1711,7 +1711,7 @@
     "name": "Bitquery",
     "description": "Blockchain On-chain Analytical API",
     "url": "https://graphql.bitquery.io",
-    "icon": "https://www.google.com/s2/favicons?domain=bitquery.io&sz=64",
+    "icon": "https://bitquery.io/favicon.ico",
     "categories": [],
     "feeds": [
       "graphql-apis"

@@ -48,8 +48,8 @@ const sections = KIND_ORDER.map((kind) => ({
     ),
 })).filter((s) => s.items.length > 0);
 
-const icon = records.find((r) => r.icon)?.icon
-  ?? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
+const icon = `https://${domain}/favicon.ico`;
+const letter = (domain[0] ?? "?").toUpperCase();
 
 const formatList = sections.map((s) => SECTION_LABEL[s.kind].replace(" · ", "/")).join(", ");
 const title = `${domain} — integrations`;
@@ -82,6 +82,7 @@ const metaFor = (r: IndexRecord): string => {
 
       <header class="head">
         <div class="favicon">
+          <span class="fav-letter">{letter}</span>
           <img src={icon} width="22" height="22" alt="" loading="lazy" onerror="this.remove()" />
         </div>
         <div class="head-body">
@@ -119,13 +120,18 @@ const metaFor = (r: IndexRecord): string => {
 <style>
   .head { padding: 24px 0 0; display: flex; align-items: flex-start; gap: 16px; max-width: 760px; }
   .favicon {
+    position: relative;
     width: 40px; height: 40px;
     border: 1px solid var(--gray-100); border-radius: 8px;
     display: grid; place-items: center;
     background: var(--white); flex-shrink: 0; margin-top: 2px;
+  }
+  .fav-letter {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
     font-weight: 600; color: var(--gray-400);
   }
-  .favicon img { border-radius: 4px; }
+  .favicon img { position: relative; z-index: 1; border-radius: 4px; background: var(--white); }
   h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.2; margin: 0; word-break: break-all; }
   .meta { margin: 6px 0 0; font-family: var(--font-mono); font-size: 12px; color: var(--gray-400); }
 

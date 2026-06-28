@@ -225,16 +225,15 @@ function buildOpenapi(): Integration[] {
       slug,
       name: s.service ? `${s.providerName ?? s.provider} – ${s.service}` : (s.title || s.provider),
       description: s.description ?? "",
-      url: s.link,
-      icon: s.raw?.info?.["x-logo"]?.url,
+      url: undefined, // s.link is the apis.guru mirror; the apex domain is the home
+      icon: undefined, // derived from the apex domain in buildIndex
       categories: s.categories ?? [],
       feeds: ["apis-guru"],
       openapi: {
         provider: s.provider,
         service: s.service ?? undefined,
         version: s.versionKey,
-        swaggerUrl: s.swaggerUrl,
-        swaggerYamlUrl: s.swaggerYamlUrl,
+        specUrl: s.origin, // the provider's own canonical spec, not the apis.guru mirror
         openapiVer: s.openapiVer,
         updated: s.updated,
         added: s.added,
@@ -310,7 +309,7 @@ function buildCli(): Integration[] {
       name: c.name,
       description: c.description ?? "",
       url: c.docs,
-      icon: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(c.domain)}&sz=64`,
+      icon: `https://${c.domain}/favicon.ico`,
       categories: [],
       feeds: ["cli-seed" as Feed],
       cli: { install: c.install, domain: c.domain, docs: c.docs, repo: c.repo },
@@ -388,7 +387,7 @@ function applyFavicons(recs: Integration[]): Integration[] {
     if (!domain) return { ...r, icon: undefined };
     return {
       ...r,
-      icon: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`,
+      icon: `https://${domain}/favicon.ico`,
     };
   });
 }
@@ -529,7 +528,8 @@ function buildIndex(all: Integration[]) {
       name: remapped ? r.name.replace(/^.*?[–-]\s*/, "") : r.name,
       description: r.description.slice(0, 240),
       url: r.url,
-      icon: remapped ? `https://www.google.com/s2/favicons?domain=${domain}&sz=64` : r.icon,
+      // Icon is the provider's own apex-domain favicon — never a third-party host.
+      icon: domain ? `https://${domain}/favicon.ico` : undefined,
       domain,
       categories: r.categories,
       feeds: r.feeds,
@@ -606,7 +606,7 @@ function main() {
   if (validatedIcons === 0) {
     console.log(`favicons: no validation cache yet — run \`bun run validate-favicons\``);
   } else {
-    const fb = all.filter((r) => r.icon?.startsWith("https://www.google.com/s2/favicons")).length;
+    const fb = all.filter((r) => r.icon?.endsWith("/favicon.ico")).length;
     console.log(`favicons: ${validatedIcons} URLs validated, ${fb} records using domain fallback`);
   }
 }

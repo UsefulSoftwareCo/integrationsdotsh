@@ -17,6 +17,12 @@ export function getStaticPaths() {
 
 const { item } = Astro.props;
 const domain = domainById.get(item.id) ?? item.slug;
+const favicon = `https://${domain}/favicon.ico`;
+const letter = (item.name[0] ?? "?").toUpperCase();
+let specHost: string | null = null;
+if (item.openapi?.specUrl) {
+  try { specHost = new URL(item.openapi.specUrl).hostname; } catch { specHost = "spec"; }
+}
 let connectCmd: string | null = null;
 let connectLabel = "Connect";
 if (item.kind === "mcp" && item.mcp?.remoteUrl) {
@@ -43,9 +49,8 @@ const description = (item.description || `${item.name} ${kindLabel[item.kind]} d
 
       <header class="head">
         <div class="favicon">
-          {item.icon
-            ? <img src={item.icon} width="22" height="22" alt="" onerror="this.remove()" />
-            : <span>{item.name[0]}</span>}
+          <span class="fav-letter">{letter}</span>
+          <img src={favicon} width="22" height="22" alt="" loading="lazy" onerror="this.remove()" />
         </div>
         <div class="head-body">
           <h1>{item.name}</h1>
@@ -115,10 +120,10 @@ const description = (item.description || `${item.name} ${kindLabel[item.kind]} d
               <dd>{item.openapi.provider}{item.openapi.service ? ` / ${item.openapi.service}` : ""}</dd>
               <dt>OpenAPI</dt>
               <dd>{item.openapi.openapiVer}</dd>
-              {item.openapi.swaggerUrl && (
+              {item.openapi.specUrl && (
                 <>
                   <dt>Spec</dt>
-                  <dd><a href={item.openapi.swaggerUrl} target="_blank" rel="noopener">json</a>{item.openapi.swaggerYamlUrl && <> · <a href={item.openapi.swaggerYamlUrl} target="_blank" rel="noopener">yaml</a></>}</dd>
+                  <dd><a href={item.openapi.specUrl} target="_blank" rel="noopener">{specHost ?? "spec"}</a></dd>
                 </>
               )}
             </>
@@ -151,13 +156,18 @@ const description = (item.description || `${item.name} ${kindLabel[item.kind]} d
 <style>
   .head { padding: 24px 0 0; display: flex; align-items: flex-start; gap: 16px; max-width: 760px; }
   .favicon {
+    position: relative;
     width: 40px; height: 40px;
     border: 1px solid var(--gray-100); border-radius: 8px;
     display: grid; place-items: center;
     background: var(--white); flex-shrink: 0; margin-top: 2px;
+  }
+  .fav-letter {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
     font-weight: 600; color: var(--gray-400);
   }
-  .favicon img { border-radius: 4px; }
+  .favicon img { position: relative; z-index: 1; border-radius: 4px; background: var(--white); }
   h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.2; margin: 0; }
   .meta { margin: 6px 0 0; font-family: var(--font-mono); font-size: 12px; color: var(--gray-400); }
 
