@@ -27,11 +27,12 @@ export default {
     const url = new URL(request.url);
 
     // Detection endpoint: run the full agent-readiness battery for a domain.
-    // GET /api/detect?domain=<domain> -> structured DetectionResult (cached 1h).
-    if (url.pathname === "/api/detect") {
-      const domain = cleanDomain(url.searchParams.get("domain"));
-      if (!domain) return json({ error: "pass ?domain=<a valid domain>" }, 400);
-      const cacheKey = new Request(`https://integrations.sh/api/detect?domain=${domain}`);
+    // GET /api/<domain>/detect -> structured DetectionResult (cached 1h).
+    const detectMatch = url.pathname.match(/^\/api\/([^/]+)\/detect\/?$/);
+    if (detectMatch) {
+      const domain = cleanDomain(decodeURIComponent(detectMatch[1]));
+      if (!domain) return json({ error: "invalid domain — GET /api/<domain>/detect" }, 400);
+      const cacheKey = new Request(`https://integrations.sh/api/${domain}/detect`);
       const cache = (caches as unknown as { default: Cache }).default;
       const cached = await cache.match(cacheKey);
       if (cached) return cached;
