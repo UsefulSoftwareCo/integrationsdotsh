@@ -51,6 +51,27 @@ const canonical = path ? new URL(path, Astro.site).href : undefined;
         --font-sans: "Geist", -apple-system, BlinkMacSystemFont, sans-serif;
         --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
         --container: 1100px;
+        color-scheme: light dark;
+      }
+
+      /* Dark mode: brand dark tokens (executor/design.md). Roles flip — high
+         token numbers become lighter text, low numbers become darker surfaces —
+         so the whole token-driven UI follows without per-component changes. */
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --gray-1000: #ededed;
+          --gray-900: #ededed;
+          --gray-700: #c4c4c4;
+          --gray-500: #9a9a9a;
+          --gray-400: #7a7a7a;
+          --gray-300: #5c5c5c;
+          --gray-200: #333333;
+          --gray-100: #1f1f1f;
+          --gray-50: #1a1a1a;
+          --gray-25: #141414;
+          --white: #0a0a0a;
+        }
+        ::selection { background: #28344a; }
       }
       *, *::before, *::after { box-sizing: border-box; }
       html { scrollbar-gutter: stable; }
