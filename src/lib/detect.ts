@@ -16,7 +16,7 @@ export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
 export interface McpDetection {
   url: string;
-  source: "api-catalog" | "server-card";
+  source: "api-catalog" | "server-card" | "probe";
   /** "oauth2" | "none" | undefined (unknown) */
   auth?: string;
   authorizationServer?: string;
@@ -231,6 +231,20 @@ async function detectMcpOnboarding(fetchImpl: FetchLike, mcpUrl: string): Promis
   };
 }
 
+/** Probe the conventional /mcp path; confirm it's actually an MCP endpoint. */
+async function discoverMcpEndpoint(fetchImpl: FetchLike, domain: string): Promise<string | undefined> {
+  const url = `https://${domain}/mcp`;
+  const hit = await get(fetchImpl, url, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "integrations.sh", version: "0" } } }),
+  });
+  if (!hit) return undefined;
+  const wwwAuth = hit.res.headers.get("www-authenticate") ?? "";
+  const looksMcp = (hit.res.status === 401 && /resource_metadata=/.test(wwwAuth)) || (hit.res.ok && /["']?jsonrpc/.test(hit.text));
+  return looksMcp ? url : undefined;
+}
+
 // ── orchestration ────────────────────────────────────────────────────────────
 
 export async function detect(domain: string, fetchImpl: FetchLike = fetch): Promise<DetectionResult> {
@@ -244,12 +258,14 @@ export async function detect(domain: string, fetchImpl: FetchLike = fetch): Prom
     checkApiSchema(fetchImpl, domain).catch(() => undefined),
     checkApiOAuth(fetchImpl, domain).catch(() => undefined),
   ]);
+  const probedMcp = await discoverMcpEndpoint(fetchImpl, domain).catch(() => undefined);
 
   // Collect MCP endpoints from the server card + api-catalog, then probe each
   // for self-onboarding capability.
   const mcpSeen = new Map<string, McpDetection>();
   if (serverCard) mcpSeen.set(serverCard.url, serverCard);
   for (const url of apiCatalog?.mcp ?? []) if (!mcpSeen.has(url)) mcpSeen.set(url, { url, source: "api-catalog" });
+  if (probedMcp && !mcpSeen.has(probedMcp)) mcpSeen.set(probedMcp, { url: probedMcp, source: "probe" });
   const mcp = await Promise.all(
     [...mcpSeen.values()].map(async (m) => ({ ...m, ...(await detectMcpOnboarding(fetchImpl, m.url).catch(() => ({}))) })),
   );
