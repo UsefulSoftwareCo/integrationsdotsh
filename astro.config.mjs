@@ -1,9 +1,15 @@
 import { defineConfig } from "astro/config";
 import react from "@astrojs/react";
+import sitemap from "@astrojs/sitemap";
 
 export default defineConfig({
   site: "https://integrations.sh",
-  integrations: [react()],
+  integrations: [
+    react(),
+    // Enumerate every static page (homepage, /d/*, /<kind>/<slug>/*) so crawlers
+    // don't depend on the client-rendered listing. Exclude JSON API routes.
+    sitemap({ filter: (page) => !page.includes("/api/") }),
+  ],
   build: {
     format: "directory",
   },

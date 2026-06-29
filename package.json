@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@astrojs/react": "^5.0.4",
+    "@astrojs/sitemap": "^3.7.3",
     "@executor-js/config": "^0.0.2",
     "@executor-js/plugin-graphql": "^0.0.2",
     "@executor-js/plugin-mcp": "^0.0.2",

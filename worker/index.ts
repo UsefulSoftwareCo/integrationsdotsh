@@ -53,8 +53,9 @@ export default {
       );
     }
 
-    // The API + its OpenAPI doc — single source of truth (worker/api.ts).
-    if (url.pathname === "/openapi.json" || url.pathname.startsWith("/api/")) {
+    // Dynamic API (the Effect HttpApi) — detect + its OpenAPI doc. Other /api/*
+    // paths (e.g. the static /api/domains.json) fall through to assets.
+    if (url.pathname === "/openapi.json" || /^\/api\/[^/]+\/detect\/?$/.test(url.pathname)) {
       const cache = (caches as unknown as { default: Cache }).default;
       const cached = await cache.match(request);
       if (cached) return cached;

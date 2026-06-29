@@ -1,14 +1,19 @@
 ---
 import Base from "~/layouts/Base.astro";
-import { all, byKind } from "~/lib/data.ts";
+import { byKind } from "~/lib/data.ts";
+import { domainCount, formatsOf, listDomains } from "~/lib/catalog.ts";
 
+const PAGE = 80;
+const initial = listDomains({ limit: PAGE }); // first page, server-rendered (crawlable)
+const total = domainCount();
 const counts = {
-  total: all.length,
   mcp: byKind.mcp.length,
   openapi: byKind.openapi.length,
   graphql: byKind.graphql.length,
   cli: byKind.cli.length,
 };
+const TLABEL: Record<string, string> = { mcp: "MCP", openapi: "API", graphql: "GraphQL", cli: "CLI" };
+const mono = (d: string) => (d[0] || "?").toUpperCase();
 ---
 
 <Base title="integrations.sh — every integration, in every format agents speak" path="/">
@@ -16,8 +21,8 @@ const counts = {
     <section class="hero">
       <h1>Every integration, in every format agents speak.</h1>
       <p class="sub" id="lede">
-        {counts.total.toLocaleString()} publicly-accessible integration specs across
-        MCP, OpenAPI, and GraphQL — grouped by domain, readable by you and your agent.
+        {(counts.mcp + counts.openapi + counts.graphql + counts.cli).toLocaleString()} publicly-accessible
+        integration specs across MCP, OpenAPI, and GraphQL — grouped by domain, readable by you and your agent.
       </p>
       <div class="search-row">
         <input
@@ -38,17 +43,36 @@ const counts = {
     </section>
 
     <table class="rows">
-      <tbody id="tbody"></tbody>
+      <tbody id="tbody">
+        {initial.map((g) => (
+          <tr>
+            <td class="c-icon">
+              {g.icon
+                ? <img class="c-fav" src={g.icon} alt="" loading="lazy" width="18" height="18" onerror={`this.outerHTML='<span class="ph">${mono(g.domain)}</span>'`} />
+                : <span class="ph">{mono(g.domain)}</span>}
+            </td>
+            <td class="c-name"><a href={`/d/${encodeURIComponent(g.domain)}/`}>{g.domain}</a></td>
+            <td class="c-chips">
+              {formatsOf(g).map((k) => (
+                <a class="chip" href={`/d/${encodeURIComponent(g.domain)}/#${k}`}>{TLABEL[k]}{(g.formats[k] ?? 0) > 1 && <span class="n">{g.formats[k]}</span>}</a>
+              ))}
+            </td>
+          </tr>
+        ))}
+      </tbody>
     </table>
     <div id="sentinel" aria-hidden="true"></div>
-    <p class="status" id="status"></p>
+    <p class="status" id="status">{total.toLocaleString()} domains</p>
   </div>
 </Base>
 
 <script>
+  // Progressive enhancement over the server-rendered first page: live search,
+  // kind filter, and infinite scroll — all over /api/domains.json (the same
+  // query layer the page rendered from).
   const PAGE = 80;
   const tbody = document.getElementById("tbody");
-  const q = document.getElementById("q");
+  const q = document.getElementById("q") as HTMLInputElement;
   const status = document.getElementById("status");
   const sentinel = document.getElementById("sentinel");
   const kindsNav = document.getElementById("kinds");
@@ -56,9 +80,9 @@ const counts = {
   const TLABEL = { mcp: "MCP", openapi: "API", graphql: "GraphQL", cli: "CLI" };
   const TORDER = ["mcp", "openapi", "graphql", "cli"];
 
-  let records = [];
-  let filtered = [];    // domain groups
-  let shown = 0;
+  let all = [];
+  let filtered = [];
+  let shown = PAGE; // first PAGE rows are server-rendered
   let kind = "";
   let term = "";
 
@@ -66,50 +90,26 @@ const counts = {
   kind = params.get("kind") ?? "";
   term = params.get("q") ?? "";
   if (term) q.value = term;
-  for (const b of kindsNav.querySelectorAll("button")) {
+  for (const b of kindsNav.querySelectorAll("button"))
     b.classList.toggle("active", (b.dataset.kind ?? "") === kind);
-  }
 
-  const esc = (s) =>
-    String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const dpath = (d) => `/d/${encodeURIComponent(d)}/`;
 
-  const buildGroups = (recs) => {
-    const map = new Map();
-    for (const r of recs) {
-      const d = r.domain || r.slug;
-      let g = map.get(d);
-      if (!g) { g = { domain: d, icon: r.icon, pop: 0, total: 0, types: {} }; map.set(d, g); }
-      const c = g.types[r.kind] ?? (g.types[r.kind] = { count: 0, kind: r.kind });
-      c.count++;
-      g.total++;
-      g.pop = Math.max(g.pop, r.popularity ?? 0);
-      if (!g.icon) g.icon = r.icon;
-    }
-    return [...map.values()].sort((a, b) =>
-      b.pop - a.pop || b.total - a.total || a.domain.localeCompare(b.domain));
-  };
-
-  const groupRowHtml = (g) => {
-    const ph = esc((g.domain[0] || "?").toUpperCase());
-    // g.icon is the PSL-validated favicon URL from api.json (null for non-public hosts).
+  const rowHtml = (g) => {
+    const L = esc((g.domain[0] || "?").toUpperCase());
     const icon = g.icon
-      ? `<img class="c-fav" src="${esc(g.icon)}" alt="" loading="lazy" width="18" height="18" onerror="this.outerHTML='<span class=&quot;ph&quot;>${ph}</span>'">`
-      : `<span class="ph">${ph}</span>`;
-    const chips = TORDER.filter((t) => g.types[t]).map((t) => {
-      const c = g.types[t];
-      return `<a class="chip" href="${dpath(g.domain)}#${t}">${TLABEL[t]}${c.count > 1 ? `<span class="n">${c.count}</span>` : ""}</a>`;
-    }).join("");
-    return `<tr>
-      <td class="c-icon">${icon}</td>
-      <td class="c-name"><a href="${dpath(g.domain)}">${esc(g.domain)}</a></td>
-      <td class="c-chips">${chips}</td></tr>`;
+      ? `<img class="c-fav" src="${esc(g.icon)}" alt="" loading="lazy" width="18" height="18" onerror="this.outerHTML='<span class=&quot;ph&quot;>${L}</span>'">`
+      : `<span class="ph">${L}</span>`;
+    const chips = TORDER.filter((t) => g.formats[t]).map((t) =>
+      `<a class="chip" href="${dpath(g.domain)}#${t}">${TLABEL[t]}${g.formats[t] > 1 ? `<span class="n">${g.formats[t]}</span>` : ""}</a>`).join("");
+    return `<tr><td class="c-icon">${icon}</td><td class="c-name"><a href="${dpath(g.domain)}">${esc(g.domain)}</a></td><td class="c-chips">${chips}</td></tr>`;
   };
 
   const render = (reset) => {
     if (reset) { tbody.innerHTML = ""; shown = 0; }
     const next = filtered.slice(shown, shown + PAGE);
-    tbody.insertAdjacentHTML("beforeend", next.map(groupRowHtml).join(""));
+    tbody.insertAdjacentHTML("beforeend", next.map(rowHtml).join(""));
     shown += next.length;
     status.textContent = filtered.length
       ? `${filtered.length.toLocaleString()} domain${filtered.length === 1 ? "" : "s"}`
@@ -121,16 +121,11 @@ const counts = {
   }, { rootMargin: "700px" });
   io.observe(sentinel);
 
-  const matchRecord = (r, t) =>
-    r.name.toLowerCase().includes(t) || (r.domain ?? "").includes(t) || r.slug.includes(t) || (r.description ?? "").toLowerCase().includes(t);
-
   const apply = () => {
     const t = term.trim().toLowerCase();
-    let pool = records;
-    if (kind) pool = pool.filter((r) => r.kind === kind);
-    if (t) pool = pool.filter((r) => matchRecord(r, t));
-    filtered = buildGroups(pool);
-
+    filtered = all.filter((g) =>
+      (!kind || g.formats[kind]) &&
+      (!t || g.domain.toLowerCase().includes(t) || (g.description || "").toLowerCase().includes(t)));
     const u = new URL(location.href);
     kind ? u.searchParams.set("kind", kind) : u.searchParams.delete("kind");
     term.trim() ? u.searchParams.set("q", term.trim()) : u.searchParams.delete("q");
@@ -138,14 +133,16 @@ const counts = {
     render(true);
   };
 
-  fetch("/api.json")
-    .then((r) => r.json())
-    .then((rows) => { records = rows; apply(); });
+  fetch("/api/domains.json").then((r) => r.json()).then((data) => {
+    all = data;
+    if (kind || term.trim()) apply();
+    else { filtered = all; status.textContent = `${all.length.toLocaleString()} domains`; }
+  });
 
   let to = 0;
   q.addEventListener("input", () => { term = q.value; clearTimeout(to); to = setTimeout(apply, 90); });
   kindsNav.addEventListener("click", (e) => {
-    const btn = e.target.closest("button");
+    const btn = (e.target as HTMLElement).closest("button");
     if (!btn) return;
     kind = btn.dataset.kind ?? "";
     for (const b of kindsNav.querySelectorAll("button")) b.classList.toggle("active", b === btn);
