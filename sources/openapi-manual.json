@@ -1,0 +1,18 @@
+{
+  "_comment": "Hand-curated OpenAPI sources, merged into the openapi catalog by scripts/normalize.ts (buildOpenapi). Same shape as the apis.guru dump's `specs[]`, but kept here so entries survive an apis.guru refetch. `origin` is the provider's own canonical spec URL. Manual entries override an apis.guru entry with the same provider/service key.",
+  "specs": [
+    {
+      "provider": "cloudflare.com",
+      "providerName": "Cloudflare",
+      "service": null,
+      "versionKey": "4",
+      "title": "Cloudflare API",
+      "description": "The full Cloudflare API — manage DNS, Workers, R2, KV, Zero Trust, CDN/cache, WAF, and the rest of the Cloudflare platform.",
+      "openapiVer": "3.0.0",
+      "origin": "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json",
+      "categories": ["cloud", "developer_tools"],
+      "updated": "2026-06-29T00:00:00.000Z",
+      "added": "2026-06-29T00:00:00.000Z"
+    }
+  ]
+}

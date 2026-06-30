@@ -8,7 +8,16 @@ import * as McpServer from "effect/unstable/ai/McpServer";
 import * as Tool from "effect/unstable/ai/Tool";
 import * as Toolkit from "effect/unstable/ai/Toolkit";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
-import { DETECT_DESCRIPTION, DetectionResult, DetectParams, runDetect } from "./operations.ts";
+import {
+  DETECT_DESCRIPTION,
+  DetectionResult,
+  DetectParams,
+  DISCOVER_DESCRIPTION,
+  DiscoverParams,
+  DiscoverResult,
+  runDetect,
+  runDiscover,
+} from "./operations.ts";
 
 const Detect = Tool.make("detect", {
   description: DETECT_DESCRIPTION,
@@ -21,10 +30,22 @@ const Detect = Tool.make("detect", {
   .annotate(Tool.Idempotent, true);
 // openWorldHint stays true (default): it reaches arbitrary external domains.
 
-export const toolkit = Toolkit.make(Detect);
+const Discover = Tool.make("discover", {
+  description: DISCOVER_DESCRIPTION,
+  parameters: DiscoverParams,
+  success: DiscoverResult,
+})
+  // Read-only (only fetches public pages) but not idempotent: the LLM fallback
+  // is non-deterministic and costs tokens, so it shouldn't be auto-replayed.
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false);
+
+export const toolkit = Toolkit.make(Detect, Discover);
 
 const HandlersLayer = toolkit.toLayer({
   detect: ({ domain }) => runDetect(domain),
+  discover: ({ domain }) => runDiscover(domain),
 } as never);
 
 const McpLayer = Layer.mergeAll(

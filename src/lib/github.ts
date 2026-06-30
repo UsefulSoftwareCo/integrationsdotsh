@@ -1,16 +1,9 @@
-// GitHub repo metadata, resolved once at build time. The star count is fetched
-// a single time per build (module top-level await runs once and is cached for
-// every page render), with a graceful fallback when the API is unavailable.
+// Build-time GitHub star count — fetched once per build (the top-level await
+// runs once, cached for every page render), with a graceful null fallback.
+// The repo URL + star formatting/markup live in src/lib/chrome.ts (the shared
+// chrome), so this module is just the number.
 
 const REPO = "UsefulSoftwareCo/integrationsdotsh";
-
-export const GITHUB_REPO_URL = `https://github.com/${REPO}`;
-export const GITHUB_ORG_URL = "https://github.com/UsefulSoftwareCo";
-
-/** Compact star count, e.g. 1234 -> "1.2k". */
-export function formatStars(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(n);
-}
 
 async function fetchStars(): Promise<number | null> {
   try {

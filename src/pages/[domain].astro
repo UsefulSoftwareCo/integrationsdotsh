@@ -1,0 +1,192 @@
+---
+import Base from "~/layouts/Base.astro";
+import Breadcrumb from "~/components/Breadcrumb.astro";
+import Surfaces from "~/components/Surfaces.tsx";
+import { faviconUrl } from "~/lib/favicon.ts";
+import { index, byId } from "~/lib/data.ts";
+import type { IndexRecord } from "~/lib/data.ts";
+import type { Kind } from "~/lib/types.ts";
+
+// Group every enriched record by its registrable domain (the same key the
+// homepage groups by: `domain`, else the slug). One page per domain.
+export function getStaticPaths() {
+  const groups = new Map<string, IndexRecord[]>();
+  for (const r of index) {
+    const d = r.domain || r.slug;
+    if (!d) continue;
+    (groups.get(d) ?? groups.set(d, []).get(d)!).push(r);
+  }
+  return [...groups.entries()].map(([domain, records]) => ({
+    params: { domain },
+    props: { domain, records },
+  }));
+}
+
+const KIND_ORDER = ["mcp", "openapi", "graphql", "cli"] as const;
+const SECTION_LABEL: Record<Kind, string> = {
+  mcp: "MCP servers",
+  openapi: "REST · OpenAPI",
+  graphql: "GraphQL",
+  cli: "CLI",
+};
+// Short labels for the header summary line.
+const SHORT_LABEL: Record<Kind, string> = {
+  mcp: "MCP",
+  openapi: "REST",
+  graphql: "GraphQL",
+  cli: "CLI",
+};
+
+const { domain, records } = Astro.props;
+
+// Sections in canonical format order, most-popular record first within each.
+const sections = KIND_ORDER.map((kind) => ({
+  kind,
+  label: SECTION_LABEL[kind],
+  items: records
+    .filter((r) => r.kind === kind)
+    .sort(
+      (a, b) => (b.popularity ?? 0) - (a.popularity ?? 0) || a.name.localeCompare(b.name),
+    ),
+})).filter((s) => s.items.length > 0);
+
+const icon = faviconUrl(domain);
+const letter = (domain[0] ?? "?").toUpperCase();
+
+const formatList = sections.map((s) => SECTION_LABEL[s.kind].replace(" · ", "/")).join(", ");
+const title = `${domain} — integrations`;
+const description = `${records.length} integration${records.length === 1 ? "" : "s"} for ${domain} across ${formatList} — readable by you and your agent.`;
+
+// Per-record meta hint shown on the right of each row. The slim index record
+// lacks per-format detail, so join back to the full record via `byId`.
+const metaFor = (r: IndexRecord): string => {
+  const full = byId.get(r.id);
+  if (r.kind === "mcp") {
+    const n = full?.tools?.length ?? full?.mcp?.toolNames?.length ?? 0;
+    return n ? `${n} tool${n === 1 ? "" : "s"}` : "mcp";
+  }
+  if (r.kind === "openapi") return full?.openapi?.version ? `v${full.openapi.version}` : "openapi";
+  if (r.kind === "graphql") return full?.graphql?.hasSecurity ? "auth" : "graphql";
+  if (r.kind === "cli") return "cli";
+  return "";
+};
+
+// Identity for dedup against discovered surfaces (url/spec from the full record).
+const identityFor = (r: IndexRecord): { url?: string; spec?: string } => {
+  const full = byId.get(r.id);
+  if (r.kind === "mcp") return { url: full?.mcp?.remoteUrl };
+  if (r.kind === "openapi") return { spec: full?.openapi?.specUrl };
+  if (r.kind === "graphql") return { url: full?.graphql?.endpoint };
+  return {};
+};
+
+// The catalog passed to the Surfaces island — SSR'd as the seed, then merged
+// with discovery (read from KV on mount / run live).
+const catalog = sections.map((s) => ({
+  kind: s.kind,
+  label: s.label,
+  items: s.items.map((r) => ({ name: r.name, description: r.description, slug: r.slug, kind: r.kind, meta: metaFor(r), ...identityFor(r) })),
+}));
+---
+
+<Base title={title} description={description} path={`/${domain}/`}>
+  <div class="container">
+    <article data-pagefind-body>
+      <Breadcrumb
+        segments={[
+          { label: "registry", href: "/" },
+          { label: domain },
+        ]}
+      />
+
+      <header class="head">
+        <div class="favicon">
+          <span class="fav-letter">{letter}</span>
+          {icon && <img src={icon} width="22" height="22" alt="" loading="lazy" onerror="this.remove()" />}
+        </div>
+        <div class="head-body">
+          <h1>{domain}</h1>
+          <p class="meta">
+            {records.length} integration{records.length === 1 ? "" : "s"}
+            {" · "}{sections.map((s) => SHORT_LABEL[s.kind]).join(" · ")}
+          </p>
+        </div>
+      </header>
+
+      <Surfaces domain={domain} catalog={catalog} client:visible />
+    </article>
+  </div>
+</Base>
+
+<!-- Surface list + credentials render inside a React island; Astro-scoped styles
+     don't reach island DOM, so these rules live in a global block. The shell
+     chrome (.head/.favicon/sec-*/etc.) comes from src/lib/chrome.ts via Base. -->
+<style is:global>
+  /* Island: CTA + loading state */
+  .auth-cta { padding: 18px 0 4px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+  .auth-cta-text { margin: 0; color: var(--gray-500); font-size: 14px; line-height: 1.55; }
+  .auth-cta-text b { color: var(--gray-900); font-weight: 500; }
+  .auth-btn {
+    font-family: var(--font-mono); font-size: 12.5px;
+    color: var(--gray-1000); background: var(--white);
+    border: 1px solid var(--gray-200); border-radius: 7px;
+    padding: 7px 13px; cursor: pointer;
+    transition: border-color 0.12s, color 0.12s;
+  }
+  .auth-btn:hover { border-color: var(--gray-400); }
+  .auth-loading {
+    padding: 20px 0; display: grid;
+    grid-template-columns: auto 1fr; gap: 4px 11px; align-items: center;
+  }
+  .auth-loading-text { font-size: 14px; color: var(--gray-700); }
+  .auth-loading-sub { grid-column: 2; font-family: var(--font-mono); font-size: 11.5px; color: var(--gray-400); }
+  .auth-loading .auth-btn { grid-column: 2; justify-self: start; margin-top: 8px; }
+  .auth-spinner {
+    width: 13px; height: 13px; border: 1.5px solid var(--gray-200);
+    border-top-color: var(--gray-500); border-radius: 50%;
+    animation: auth-spin 0.7s linear infinite;
+  }
+  @keyframes auth-spin { to { transform: rotate(360deg); } }
+  .auth-loading-live { padding: 4px 0 16px; border-bottom: 1px solid var(--gray-100); margin-bottom: 18px; }
+
+  .disc-summary { margin: 8px 0 22px; font-size: 14.5px; color: var(--gray-700); line-height: 1.6; max-width: 640px; }
+
+  /* kind sections — surfaces grouped by type (sec-header/sec-label from chrome) */
+  .disc-sec { margin-top: 40px; max-width: 760px; scroll-margin-top: 24px; }
+  .disc-list { list-style: none; padding: 0; margin: 0; }
+  .disc-entry { border-bottom: 1px solid var(--gray-100); padding: 13px 0; }
+  .disc-entry-head { display: flex; align-items: baseline; gap: 11px; }
+  .disc-ename { font-weight: 500; font-size: 14.5px; color: var(--gray-1000); text-decoration: none; }
+  a.disc-ename:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .disc-emeta { margin-left: auto; font-family: var(--font-mono); font-size: 12px; color: var(--gray-400); white-space: nowrap; }
+  .disc-prov {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.03em;
+    text-transform: uppercase; padding: 1px 5px; border-radius: 4px; cursor: default;
+  }
+  .disc-prov-det { color: var(--gray-700); border: 1px solid var(--gray-200); }
+  .disc-prov-disc { color: var(--gray-400); }
+
+  /* credentials */
+  .disc-creds { margin-top: 26px; padding-top: 6px; }
+  .disc-cred { border: 1px solid var(--gray-100); border-radius: 10px; padding: 14px 18px; margin-bottom: 10px; }
+  .disc-cred-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+  .disc-cred-label { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+  .disc-ctype {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: lowercase;
+    color: var(--gray-500); border: 1px solid var(--gray-200); border-radius: 4px; padding: 1px 5px;
+  }
+  .disc-cred-get { margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; }
+
+  /* setup markdown */
+  .disc-setup { margin-top: 10px; }
+  .disc-setup-h { font-size: 13px; font-weight: 600; color: var(--gray-1000); margin: 8px 0 4px; }
+  .disc-setup-h:first-child { margin-top: 0; }
+  .disc-setup-p { margin: 4px 0; font-size: 13.5px; color: var(--gray-700); line-height: 1.6; }
+  .disc-setup-gap { height: 4px; }
+  .disc-ic {
+    font-family: var(--font-mono); font-size: 12px; color: var(--gray-700);
+    background: var(--gray-25); border: 1px solid var(--gray-100); border-radius: 4px; padding: 0 4px;
+  }
+  .disc-link { color: var(--gray-1000); text-decoration: none; }
+  .disc-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+</style>

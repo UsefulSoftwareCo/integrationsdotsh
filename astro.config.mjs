@@ -6,9 +6,9 @@ export default defineConfig({
   site: "https://integrations.sh",
   integrations: [
     react(),
-    // Enumerate every static page (homepage, /d/*, /<kind>/<slug>/*) so crawlers
+    // Enumerate every static page (homepage, /<domain>/*, /<kind>/<slug>/*) so crawlers
     // don't depend on the client-rendered listing. Exclude JSON API routes.
-    sitemap({ filter: (page) => !page.includes("/api/") }),
+    sitemap({ filter: (page) => !page.includes("/api/") && !page.includes("/disc/") }),
   ],
   build: {
     format: "directory",

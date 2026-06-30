@@ -52,10 +52,10 @@ const mono = (d: string) => (d[0] || "?").toUpperCase();
                 ? <img class="c-fav" src={g.icon} alt="" loading="lazy" width="18" height="18" onerror={`this.outerHTML='<span class="ph">${mono(g.domain)}</span>'`} />
                 : <span class="ph">{mono(g.domain)}</span>}
             </td>
-            <td class="c-name"><a href={`/d/${encodeURIComponent(g.domain)}/`}>{g.domain}</a></td>
+            <td class="c-name"><a href={`/${encodeURIComponent(g.domain)}/`}>{g.domain}</a></td>
             <td class="c-chips">
               {formatsOf(g).map((k) => (
-                <a class="chip" href={`/d/${encodeURIComponent(g.domain)}/#${k}`}>{TLABEL[k]}{(g.formats[k] ?? 0) > 1 && <span class="n">{g.formats[k]}</span>}</a>
+                <a class="chip" href={`/${encodeURIComponent(g.domain)}/#${k}`}>{TLABEL[k]}{(g.formats[k] ?? 0) > 1 && <span class="n">{g.formats[k]}</span>}</a>
               ))}
             </td>
           </tr>
@@ -95,7 +95,7 @@ const mono = (d: string) => (d[0] || "?").toUpperCase();
     b.classList.toggle("active", (b.dataset.kind ?? "") === kind);
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const dpath = (d) => `/d/${encodeURIComponent(d)}/`;
+  const dpath = (d) => `/${encodeURIComponent(d)}/`;
 
   const rowHtml = (g) => {
     const L = esc((g.domain[0] || "?").toUpperCase());

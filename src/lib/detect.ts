@@ -42,6 +42,8 @@ export interface DetectionResult {
   auth?: {
     oauth?: {
       authorizationServers?: string[];
+      authorizationEndpoint?: string;
+      tokenEndpoint?: string;
       scopes?: string[];
       registrationEndpoint?: string;
       dcr?: boolean;
@@ -201,6 +203,8 @@ async function asMetadata(fetchImpl: FetchLike, asUrl: string) {
   const doc = hit && hit.res.ok ? asJson(hit.text, hit.res.headers.get("content-type")) : undefined;
   if (!doc) return undefined;
   return {
+    authorizationEndpoint: doc.authorization_endpoint as string | undefined,
+    tokenEndpoint: doc.token_endpoint as string | undefined,
     registrationEndpoint: doc.registration_endpoint as string | undefined,
     dcr: Boolean(doc.registration_endpoint), // Dynamic Client Registration (RFC 7591)
     cimd: doc.client_id_metadata_document_supported === true, // Client ID Metadata Document
@@ -225,6 +229,8 @@ async function checkApiOAuth(fetchImpl: FetchLike, domain: string) {
   if (!servers && !meta) return undefined;
   return {
     authorizationServers: servers ?? [asUrl],
+    authorizationEndpoint: meta?.authorizationEndpoint,
+    tokenEndpoint: meta?.tokenEndpoint,
     scopes: (prmDoc?.scopes_supported as string[] | undefined) ?? meta?.scopes,
     registrationEndpoint: meta?.registrationEndpoint,
     dcr: meta?.dcr,

@@ -212,19 +212,29 @@ interface ApiGuruSpec {
 
 function buildOpenapi(): Integration[] {
   const data = readJson<{ specs: ApiGuruSpec[] }>(join(SOURCES, "api-guru-openapi.json"));
+  // Hand-curated specs (sources/openapi-manual.json) — kept separate so they
+  // survive an apis.guru refetch; they override an apis.guru entry on key match.
+  const manualPath = join(SOURCES, "openapi-manual.json");
+  const manual = existsSync(manualPath) ? readJson<{ specs: ApiGuruSpec[] }>(manualPath).specs : [];
+  const keyOf = (s: ApiGuruSpec) => (s.service ? `${s.provider}:${s.service}` : s.provider);
+  const manualKeys = new Set(manual.map(keyOf));
+
   // One record per provider+service (collapse versions, keep newest).
   const byKey = new Map<string, ApiGuruSpec>();
   for (const s of data.specs) {
-    const key = s.service ? `${s.provider}:${s.service}` : s.provider;
+    const key = keyOf(s);
+    if (manualKeys.has(key)) continue; // a manual entry owns this key
     const prev = byKey.get(key);
     if (!prev || (s.updated && prev.updated && s.updated > prev.updated)) {
       byKey.set(key, s);
     }
   }
+  for (const s of manual) byKey.set(keyOf(s), s);
 
   const recs: Integration[] = [];
   for (const [key, s] of byKey) {
     const slug = slugify(key);
+    const feed: Feed = manualKeys.has(key) ? "override" : "apis-guru";
     recs.push({
       id: `openapi/${slug}`,
       kind: "openapi",
@@ -234,7 +244,7 @@ function buildOpenapi(): Integration[] {
       url: undefined, // s.link is the apis.guru mirror; the apex domain is the home
       icon: undefined, // derived from the apex domain in buildIndex
       categories: s.categories ?? [],
-      feeds: ["apis-guru"],
+      feeds: [feed],
       openapi: {
         provider: s.provider,
         service: s.service ?? undefined,
@@ -244,7 +254,7 @@ function buildOpenapi(): Integration[] {
         updated: s.updated,
         added: s.added,
       },
-      raw: { "apis-guru": s },
+      raw: { [feed]: s },
     });
   }
   return dedupeSlugs(recs);

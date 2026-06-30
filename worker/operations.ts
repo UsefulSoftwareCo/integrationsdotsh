@@ -9,6 +9,8 @@
  */
 import { Effect, Schema } from "effect";
 import { detect } from "../src/lib/detect.ts";
+import { discover, type ChatFn, type DiscoverEvent, type WebBackend } from "../src/lib/discover.ts";
+import { naiveWeb } from "../src/lib/contextdev.ts";
 
 export const DetectParams = Schema.Struct({ domain: Schema.String });
 
@@ -38,3 +40,82 @@ export const runDetect = (domain: string): Effect.Effect<typeof DetectionResult.
     const r = await detect(domain.trim().toLowerCase());
     return JSON.parse(JSON.stringify(r)) as typeof DetectionResult.Type;
   });
+
+// ── discover: the LLM long-tail fallback ──────────────────────────────────────
+
+export const DiscoverParams = Schema.Struct({ domain: Schema.String });
+
+export const DiscoverResult = Schema.Struct({
+  domain: Schema.String,
+  /** The full deterministic detection result (always run first, seeds the agent). */
+  detect: Schema.Unknown,
+  /** One-line summary of the service's integration surface. */
+  summary: Schema.optional(Schema.String),
+  /** Global credential registry: { id: Credential } — defined once, referenced per surface. */
+  credentials: Schema.optional(Schema.Unknown),
+  /** Typed surface inventory (openapi/rest/graphql/mcp/cli), each with auth entries referencing credentials. */
+  surfaces: Schema.optional(Schema.Unknown),
+  /** Whether the LLM agent ran (false = no model binding available). */
+  usedLlm: Schema.Boolean,
+});
+
+export const DISCOVER_DESCRIPTION =
+  "Map a domain's complete public integration surface for agents — MCP servers, REST/OpenAPI, " +
+  "GraphQL, CLIs, SDKs, webhooks — plus how to authenticate (per method: where to get the " +
+  "credential and how to pass it). Runs deterministic detection first to seed authoritative " +
+  "signals, then a bounded model-driven agent (web search, sitemap, JS-rendered scrape) maps the " +
+  "rest. Returns pointers (spec/docs URLs), never parsed specs.";
+
+/** The injected chat model (OpenAI tool-calling). Set by the Worker per isolate;
+ * null in Bun/tests, where the agent is skipped. */
+let chatFn: ChatFn | null = null;
+export const setChat = (fn: ChatFn | null): void => {
+  chatFn = fn;
+};
+
+/** The injected web backend (context.dev when a key is wired, else naive fetch).
+ * Set by the Worker per isolate. */
+let webBackend: WebBackend | null = null;
+export const setWebBackend = (b: WebBackend): void => {
+  webBackend = b;
+};
+
+/** Flatten the engine's DiscoveryResult into the JSON-clean wire shape (v2:
+ * a global credentials registry + a typed surfaces list). */
+const pack = (domain: string, detect: unknown, disc: Awaited<ReturnType<typeof discover>>, usedLlm: boolean) =>
+  JSON.parse(
+    JSON.stringify({
+      domain,
+      detect,
+      usedLlm,
+      summary: disc?.summary,
+      credentials: disc?.credentials,
+      surfaces: disc?.surfaces,
+    }),
+  );
+
+/** The discover handler, shared by REST and MCP. Detect-first to seed the agent
+ * with authoritative signals; the model then drives its own discovery trajectory. */
+export const runDiscover = (domain: string): Effect.Effect<typeof DiscoverResult.Type> =>
+  Effect.promise(async () => {
+    const d = await detect(domain.trim().toLowerCase());
+    if (!chatFn) return JSON.parse(JSON.stringify({ domain: d.domain, detect: d, usedLlm: false }));
+    const disc = await discover(d.domain, d, chatFn, webBackend ?? naiveWeb()).catch(() => null);
+    return pack(d.domain, d, disc, true);
+  });
+
+/** Same pipeline as runDiscover, but emits events as it goes — status `progress`
+ * plus `credential`/`surface` partials the moment the agent records each. Used by
+ * the Worker's SSE stream endpoint; returns the JSON-clean result so the stream
+ * can also warm the edge cache. */
+export const discoverWithProgress = async (
+  domain: string,
+  emit: (event: DiscoverEvent) => void,
+): Promise<typeof DiscoverResult.Type> => {
+  emit({ kind: "progress", message: "Checking well-known endpoints…" });
+  const d = await detect(domain.trim().toLowerCase());
+  emit({ kind: "progress", message: d.found.length ? `Detected: ${d.found.join(", ")}` : "No standard signals — searching" });
+  if (!chatFn) return JSON.parse(JSON.stringify({ domain: d.domain, detect: d, usedLlm: false }));
+  const disc = await discover(d.domain, d, chatFn, webBackend ?? naiveWeb(), emit).catch(() => null);
+  return pack(d.domain, d, disc, true);
+};

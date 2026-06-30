@@ -18,8 +18,14 @@
   "observability": {
     "enabled": true
   },
+  "ai": {
+    "binding": "AI"
+  },
   "durable_objects": {
     "bindings": [{ "name": "MCP", "class_name": "McpDurableObject" }]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["McpDurableObject"] }]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["McpDurableObject"] }],
+  "kv_namespaces": [
+    { "binding": "DISCOVERY", "id": "7456151d9722471ca000f6d3b03a62c7" }
+  ]
 }

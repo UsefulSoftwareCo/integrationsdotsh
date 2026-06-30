@@ -8,7 +8,16 @@ import { Etag, HttpPlatform } from "effect/unstable/http";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import * as OpenApi from "effect/unstable/httpapi/OpenApi";
-import { DETECT_DESCRIPTION, DetectionResult, DetectParams, runDetect } from "./operations.ts";
+import {
+  DETECT_DESCRIPTION,
+  DetectionResult,
+  DetectParams,
+  DISCOVER_DESCRIPTION,
+  DiscoverParams,
+  DiscoverResult,
+  runDetect,
+  runDiscover,
+} from "./operations.ts";
 
 const Detect = HttpApiEndpoint.get("detect", "/api/:domain/detect", {
   params: DetectParams,
@@ -17,8 +26,15 @@ const Detect = HttpApiEndpoint.get("detect", "/api/:domain/detect", {
   .annotate(OpenApi.Summary, "Detect a domain's agent-readiness")
   .annotate(OpenApi.Description, DETECT_DESCRIPTION);
 
+const Discover = HttpApiEndpoint.get("discover", "/api/:domain/discover", {
+  params: DiscoverParams,
+  success: DiscoverResult,
+})
+  .annotate(OpenApi.Summary, "Discover how to authenticate with a domain's API")
+  .annotate(OpenApi.Description, DISCOVER_DESCRIPTION);
+
 export const Api = HttpApi.make("integrations.sh")
-  .add(HttpApiGroup.make("detect", { topLevel: true }).add(Detect))
+  .add(HttpApiGroup.make("detect", { topLevel: true }).add(Detect).add(Discover))
   .annotate(OpenApi.Title, "integrations.sh")
   .annotate(OpenApi.Version, "0.1.0")
   .annotate(
@@ -27,7 +43,9 @@ export const Api = HttpApi.make("integrations.sh")
   );
 
 const DetectGroup = HttpApiBuilder.group(Api, "detect", (handlers) =>
-  handlers.handle("detect", (req: { readonly params: { readonly domain: string } }) => runDetect(req.params.domain)),
+  handlers
+    .handle("detect", (req: { readonly params: { readonly domain: string } }) => runDetect(req.params.domain))
+    .handle("discover", (req: { readonly params: { readonly domain: string } }) => runDiscover(req.params.domain)),
 );
 
 const Platform = Layer.mergeAll(Path.layer, Etag.layerWeak, HttpPlatform.layer).pipe(
