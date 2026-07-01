@@ -10,7 +10,7 @@
  * Chrome (tokens, nav, footer, atoms) comes from the shared src/lib/chrome.ts —
  * the SAME source Base.astro uses — so the static and SSR'd pages never drift.
  */
-import { GLOBAL_CSS, FONT_HEAD, navHtml, footerHtml, FOOTER_JS } from "../src/lib/chrome.ts";
+import { GLOBAL_CSS, FONT_HEAD, navHtml, footerHtml, FOOTER_JS, ANALYTICS_JS } from "../src/lib/chrome.ts";
 
 // Loose shapes (the value is parsed KV JSON; the schema is the source of truth).
 interface Mechanics {
@@ -235,5 +235,6 @@ ${detailsHtml(surface)}
 </div></main>
 ${footerHtml()}
 <script>${FOOTER_JS}</script>
+<script>${ANALYTICS_JS}</script>
 </body></html>`;
 }
