@@ -20,6 +20,12 @@ interface KVNamespace {
 export interface Env {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   POSTHOG_KEY: string;
+  /** PostHog token of the EXECUTOR product project. The executor-UA `hit`
+   * heartbeat is the executor DAU/WAU signal, so it must land there — the
+   * executor dashboards ("Executor — Stats", active machines by surface)
+   * query it. Everything else goes to the integrations.sh project via
+   * POSTHOG_KEY. Optional so a missing secret degrades to site-only. */
+  POSTHOG_EXECUTOR_KEY?: string;
   MCP: DurableObjectNamespace;
   /** Durable per-domain store of discovery results — written on completion,
    * read at page render (merged with the static catalog). */
@@ -112,27 +118,33 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 
 /** Fire-and-forget server-side PostHog capture. Browser pageviews come from
  * posthog-js (ANALYTICS_JS in chrome.ts); this covers the callers that never
- * run JS — agents fetching data files, MCP clients, and direct API users. */
-function track(env: Env, ctx: ExecutionContext, request: Request, event: string, properties: Record<string, unknown> = {}): void {
-  if (!env.POSTHOG_KEY) return;
-  ctx.waitUntil(
-    fetch("https://us.i.posthog.com/i/v0/e/", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        api_key: env.POSTHOG_KEY,
-        event,
-        distinct_id: request.headers.get("cf-connecting-ip") || "unknown",
-        properties: {
-          $process_person_profile: false,
-          user_agent: request.headers.get("user-agent") || "unknown",
-          country: request.headers.get("cf-ipcountry") || "unknown",
-          path: new URL(request.url).pathname,
-          ...properties,
-        },
-      }),
-    }).catch(() => {}),
-  );
+ * run JS — agents fetching data files, MCP clients, and direct API users.
+ * `apiKeys` routes the event to one or more projects (executor heartbeat is
+ * dual-sent: the executor project owns the DAU series, the integrations
+ * project keeps the site-traffic view). */
+function track(env: Env, ctx: ExecutionContext, request: Request, event: string, properties: Record<string, unknown> = {}, apiKeys?: Array<string | undefined>): void {
+  const keys = [...new Set((apiKeys ?? [env.POSTHOG_KEY]).filter((k): k is string => !!k))];
+  if (keys.length === 0) return;
+  const body = {
+    event,
+    distinct_id: request.headers.get("cf-connecting-ip") || "unknown",
+    properties: {
+      $process_person_profile: false,
+      user_agent: request.headers.get("user-agent") || "unknown",
+      country: request.headers.get("cf-ipcountry") || "unknown",
+      path: new URL(request.url).pathname,
+      ...properties,
+    },
+  };
+  for (const api_key of keys) {
+    ctx.waitUntil(
+      fetch("https://us.i.posthog.com/i/v0/e/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ api_key, ...body }),
+      }).catch(() => {}),
+    );
+  }
 }
 
 export default {
@@ -318,12 +330,15 @@ export default {
       }
     }
 
-    // Analytics on asset fallthrough: `hit` for executor agents (kept as-is —
-    // pre-launch dashboards query it), `data_fetch` for any non-browser caller
-    // pulling the machine-readable files. Browser pageviews are client-side.
+    // Analytics on asset fallthrough: `hit` for executor agents, `data_fetch`
+    // for any other non-browser caller pulling the machine-readable files.
+    // Browser pageviews are client-side. The `hit` heartbeat doubles as the
+    // executor DAU signal, so it dual-sends: executor project (canonical DAU
+    // series, queried by the executor dashboards) + integrations project
+    // (integrations.sh's own traffic view).
     const agent = request.headers.get("user-agent") || "unknown";
     if (agent.includes("executor")) {
-      track(env, ctx, request, "hit");
+      track(env, ctx, request, "hit", {}, [env.POSTHOG_EXECUTOR_KEY, env.POSTHOG_KEY]);
     } else if (!agent.includes("Mozilla") && (/\.json$/.test(url.pathname) || url.pathname.startsWith("/.well-known/"))) {
       // Browsers (the homepage fetches /api/domains.json) identify as Mozilla;
       // what's left is curl, scripts, and agents pulling the data files.
