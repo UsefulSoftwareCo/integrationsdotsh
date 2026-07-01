@@ -110,6 +110,38 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
     headers: { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*", ...headers },
   });
 
+const POSTHOG_INGEST = "us.i.posthog.com";
+const POSTHOG_ASSETS = "us-assets.i.posthog.com";
+
+/**
+ * Server-side PostHog event. Covers the callers that never execute page JS —
+ * agents and API/MCP clients — so their traffic still lands in the project.
+ * IP as distinct_id with person profiles off: counts without identity.
+ */
+const track = (env: Env, ctx: ExecutionContext, request: Request, event: string, props: Record<string, unknown> = {}): void => {
+  if (!env.POSTHOG_KEY) return;
+  const url = new URL(request.url);
+  ctx.waitUntil(
+    fetch(`https://${POSTHOG_INGEST}/i/v0/e/`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        api_key: env.POSTHOG_KEY,
+        event,
+        distinct_id: request.headers.get("cf-connecting-ip") || "unknown",
+        properties: {
+          $process_person_profile: false,
+          path: url.pathname,
+          method: request.method,
+          user_agent: request.headers.get("user-agent") || "unknown",
+          country: request.headers.get("cf-ipcountry") || "unknown",
+          ...props,
+        },
+      }),
+    }).catch(() => {}),
+  );
+};
+
 export default {
   async fetch(
     request: Request,
@@ -119,15 +151,37 @@ export default {
     const url = new URL(request.url);
     wireAi(env);
 
+    // PostHog reverse proxy — the client snippet (chrome.ts ANALYTICS_JS) points
+    // here so events stay same-origin (adblock-resilient, no third-party CSP).
+    // /_i/static/* serves the SDK from the assets host; everything else is
+    // ingestion. Forward the client IP so geo/person data isn't the edge PoP.
+    if (url.pathname.startsWith("/_i/")) {
+      const rest = url.pathname.slice("/_i".length);
+      const upstreamHost = rest.startsWith("/static/") ? POSTHOG_ASSETS : POSTHOG_INGEST;
+      const upstream = new URL(`https://${upstreamHost}${rest}${url.search}`);
+      const headers = new Headers(request.headers);
+      headers.set("host", upstreamHost);
+      const ip = request.headers.get("cf-connecting-ip");
+      if (ip) headers.set("x-forwarded-for", ip);
+      return fetch(upstream.toString(), {
+        method: request.method,
+        headers,
+        body: request.body,
+        redirect: "follow",
+      });
+    }
+
     // MCP server — point Claude/Cursor at /mcp. Routed through a single Durable
     // Object so the session map persists across stateless Worker requests.
     if (url.pathname === "/mcp") {
+      track(env, ctx, request, "mcp_request");
       return env.MCP.get(env.MCP.idFromName("mcp")).fetch(request);
     }
 
     // Self-describe via the same discovery format the catalog indexes: point at
     // our own OpenAPI + MCP endpoint.
     if (url.pathname === "/.well-known/api-catalog") {
+      track(env, ctx, request, "data_fetch");
       return json(
         {
           linkset: [{
@@ -162,6 +216,7 @@ export default {
     const streamMatch = /^\/api\/([^/]+)\/discover\/stream\/?$/.exec(url.pathname);
     if (streamMatch) {
       const domain = decodeURIComponent(streamMatch[1]);
+      track(env, ctx, request, "discover_stream", { domain });
       const cache = (caches as unknown as { default: Cache }).default;
       const keyUrl = new URL(url.origin + `/api/${encodeURIComponent(domain)}/discover`);
       keyUrl.searchParams.set("__cv", CACHE_VERSION);
@@ -219,6 +274,7 @@ export default {
     // Dynamic API (the Effect HttpApi) — detect, discover + the OpenAPI doc.
     // Other /api/* paths (e.g. the static /api/domains.json) fall through to assets.
     if (url.pathname === "/openapi.json" || /^\/api\/[^/]+\/(?:detect|discover)\/?$/.test(url.pathname)) {
+      track(env, ctx, request, "api_request");
       const cache = (caches as unknown as { default: Cache }).default;
       // Version the cache key so a deploy that bumps CACHE_VERSION orphans stale
       // entries (the Cache API otherwise survives deploys).
@@ -273,23 +329,15 @@ export default {
       }
     }
 
-    // Analytics: count executor-agent hits.
-    const ip = request.headers.get("cf-connecting-ip") || "unknown";
-    const country = request.headers.get("cf-ipcountry") || "unknown";
+    // Analytics for non-page traffic. `hit` = executor agents (any path, the
+    // pre-launch event name — keep it so history stays one series). `data_fetch`
+    // = anything pulling the machine-readable registry (api.json, /disc/*,
+    // .well-known/*) — the agent-consumption signal page JS can't see.
     const agent = request.headers.get("user-agent") || "unknown";
     if (agent.includes("executor")) {
-      ctx.waitUntil(
-        fetch("https://us.i.posthog.com/i/v0/e/", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            api_key: env.POSTHOG_KEY,
-            event: "hit",
-            distinct_id: ip,
-            properties: { $process_person_profile: false, user_agent: agent, country, path: url.pathname },
-          }),
-        }),
-      );
+      track(env, ctx, request, "hit");
+    } else if (url.pathname === "/api.json" || url.pathname.startsWith("/disc/") || url.pathname.startsWith("/.well-known/")) {
+      track(env, ctx, request, "data_fetch");
     }
 
     return await env.ASSETS.fetch(request);
