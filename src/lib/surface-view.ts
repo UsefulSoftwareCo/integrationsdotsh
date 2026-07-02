@@ -3,44 +3,23 @@
  * island (domain page) and the SSR'd surface detail page, so a surface reads
  * identically wherever it appears.
  *
- * The interfaces are deliberately loose: the values are parsed KV/stream JSON;
- * the strict shape lives in discovery-schema.ts (the writer's contract).
+ * Types come from the canonical schema via `import type` (zero runtime effect
+ * in the client bundle); this module adds only display logic.
  */
+import type { AuthStatus, Basis, Credential, DiscoveryResult, Mechanics } from "./discovery-schema.ts";
 
-export interface Mechanics {
-  source: string;
-  scheme?: string;
-  in?: string;
-  headerName?: string;
-  paramName?: string;
-  command?: string;
-  env?: string[];
-  url?: string;
-}
-export interface CredentialUse {
-  id: string;
-  mechanics: Mechanics;
-}
-export interface Basis {
-  via: string;
-  signal?: string;
-  evidence?: string[];
-}
-export interface AuthEntry {
-  use: CredentialUse[];
-  basis: Basis;
-}
-export type AuthStatus =
-  | { status: "none"; basis: Basis }
-  | { status: "required"; entries: AuthEntry[] }
-  | { status: "unknown" };
-export interface Credential {
-  type: string;
-  label: string;
-  generateUrl?: string;
-  setup: string;
-}
+export type { Credential, Mechanics };
+export type { AuthEntry, AuthStatus, Basis, CredentialUse } from "./discovery-schema.ts";
+
+/**
+ * Flat renderer view of a Surface: the union widened so per-kind fields are
+ * all optional. Display code reads parsed JSON generically ("show url if
+ * present"); forcing a type-narrow at every field read buys nothing there.
+ * The STRICT discriminated union (discovery-schema.ts Surface) remains the
+ * wire/write contract.
+ */
 export interface Surface {
+  slug: string;
   name: string;
   type: string;
   docs?: string;
@@ -48,32 +27,24 @@ export interface Surface {
   auth: AuthStatus;
   spec?: string;
   url?: string;
-  transports?: string[];
-  packages?: { registryType: string; identifier: string; runtimeHint?: string }[];
+  transports?: readonly string[];
+  packages?: readonly { registryType: string; identifier: string; runtimeHint?: string }[];
   command?: string;
+  notes?: string;
 }
 
-/** The stored-discovery result shapes read back from KV / the baseline JSON. */
-export interface DiscoveryDoc {
-  surfaces?: Surface[];
-  credentials?: Record<string, Credential>;
-}
+/** The stored-discovery result shape read back from KV / the baseline JSON. */
+export type DiscoveryDoc = Partial<Pick<DiscoveryResult, "credentials">> & { surfaces?: Surface[] };
 
 export const SURFACE_TYPE_LABEL: Record<string, string> = {
-  openapi: "OpenAPI",
-  rest: "REST",
+  http: "REST",
   graphql: "GraphQL",
   mcp: "MCP",
   cli: "CLI",
+  // v2 vocabulary — still in old stored rows until re-discovered.
+  openapi: "OpenAPI",
+  rest: "REST",
 };
-
-/** URL slug for a surface name — the `/{domain}/{slug}/` detail-page key. */
-export function slugifySurface(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
 
 export function hostOf(url?: string): string {
   if (!url) return "";
@@ -102,9 +73,11 @@ export function mechanicsLine(m: Mechanics): string {
       return "OAuth · resolves from well-known metadata";
     case "metadata":
       return `OAuth · metadata at ${hostOf(m.url)}`;
-    case "inline":
+    case "cli":
       if (m.command) return `$ ${m.command}`;
-      if (m.env && m.env.length) return `env ${m.env.join(", ")}`;
+      if (m.env?.length) return `env ${m.env.join(", ")}`;
+      return "CLI login";
+    case "http":
       if (m.in === "query") return `?${m.paramName ?? "api_key"}=<credential>`;
       if (m.in === "body") return `${m.paramName ?? "api_key"}=<credential>`;
       return `${m.headerName ?? "Authorization"}: ${m.scheme ? `${m.scheme} ` : ""}<credential>`;
@@ -116,7 +89,7 @@ export function mechanicsLine(m: Mechanics): string {
 /** A `claude mcp add` / install one-liner, when we have what we need. */
 export function connectCmd(surface: Surface): { label: string; cmd: string } | null {
   if (surface.type === "mcp" && surface.url) {
-    return { label: "Connect", cmd: `claude mcp add --transport http ${slugifySurface(surface.name)} ${surface.url}` };
+    return { label: "Connect", cmd: `claude mcp add --transport http ${surface.slug} ${surface.url}` };
   }
   if (surface.type === "cli") {
     const p = surface.packages?.[0];

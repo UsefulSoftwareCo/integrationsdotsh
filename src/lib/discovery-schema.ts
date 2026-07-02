@@ -1,5 +1,5 @@
 /**
- * The integrations.sh discovery data model (v2) as an Effect Schema — the
+ * The integrations.sh discovery data model (v3) as an Effect Schema — the
  * canonical, field-level definition of what the discovery agent produces, and
  * the same Schema library the worker already projects to REST + MCP + /openapi.json.
  * See docs/discovery-model.md for the prose rationale.
@@ -17,14 +17,31 @@
  * `Credential` is a plain Struct whose `type` is a `Literals` enum (not a tagged
  * union) — the auth-mode vocabulary, derived from Nango (`bearer` is our own
  * addition; Nango's `NONE` lives in AuthStatus, not here).
+ *
+ * v3 (breaking, from v2):
+ *   - `version: 3` on the result — readers dispatch on it, never shape-sniff.
+ *   - every surface carries a server-assigned `slug`: its stable identity and
+ *     URL segment. The model never produces it.
+ *   - `openapi` and `rest` collapsed into one `http` variant (the old tag
+ *     encoded "has a spec?", which `spec`'s presence already says).
+ *   - Mechanics `inline` split into `http` and `cli` (one variant was carrying
+ *     two unrelated key sets).
+ *   - `Basis.detected` gains optional `verifiedAt` — re-verifiable facts age
+ *     independently of the run that first found them.
+ *   - `StoredDiscovery` — the KV row envelope, previously untyped and
+ *     re-declared inline by every reader.
  */
 import { Schema } from "effect";
+
+/** Payload schema version. Bump on breaking shape changes. */
+export const DISCOVERY_VERSION = 3 as const;
 
 // ── Basis — how we learned a thing exists (trust/verifiability axis) ──────
 export const Basis = Schema.Union([
   Schema.Struct({
     via: Schema.Literal("detected"),
     signal: Schema.String.annotate({ description: "A re-verifiable machine signal the service publishes (e.g. '.well-known/api-catalog', 'oauth-protected-resource', 'openapi:securitySchemes')." }),
+    verifiedAt: Schema.optional(Schema.String.annotate({ description: "ISO timestamp the signal was last re-verified — detected facts age independently of the run that first found them." })),
   }),
   Schema.Struct({
     via: Schema.Literal("discovered"),
@@ -46,25 +63,28 @@ export const Mechanics = Schema.Union([
     url: Schema.String.annotate({ description: "The non-standard location of the well-known metadata (an override)." }),
   }),
   Schema.Struct({
-    source: Schema.Literal("inline"),
-    in: Schema.optional(Schema.Literals(["header", "query", "body", "path"]).annotate({ description: "HTTP: where the credential rides." })),
+    source: Schema.Literal("http"),
+    in: Schema.optional(Schema.Literals(["header", "query", "body", "path"]).annotate({ description: "Where the credential rides. Default: header." })),
     headerName: Schema.optional(Schema.String.annotate({ description: "HTTP header name, e.g. 'Authorization'." })),
     scheme: Schema.optional(Schema.String.annotate({ description: "HTTP auth scheme prefix, e.g. 'Bearer'." })),
     paramName: Schema.optional(Schema.String.annotate({ description: "Query/body parameter name." })),
-    command: Schema.optional(Schema.String.annotate({ description: "CLI: a command to run, e.g. 'wrangler login'." })),
-    env: Schema.optional(Schema.Array(Schema.String).annotate({ description: "CLI: env var(s) to set, e.g. ['CLOUDFLARE_API_TOKEN']." })),
-  }).annotate({ description: "Agent-read from docs. HTTP keys: in/headerName/scheme/paramName. CLI keys: command/env." }),
+  }).annotate({ description: "Agent-read from docs: the credential rides on the HTTP request itself." }),
+  Schema.Struct({
+    source: Schema.Literal("cli"),
+    command: Schema.optional(Schema.String.annotate({ description: "A command to run, e.g. 'wrangler login'." })),
+    env: Schema.optional(Schema.Array(Schema.String).annotate({ description: "Env var(s) to set, e.g. ['CLOUDFLARE_API_TOKEN']." })),
+  }).annotate({ description: "Agent-read from docs: the credential enters through a CLI login flow or environment variables." }),
   Schema.Struct({
     source: Schema.Literal("unknown"),
   }).annotate({ description: "Confirmed to exist, but the binding mechanics weren't captured." }),
-]).annotate({ description: "How a credential binds to a surface. `source` also signals knowledge state: spec/well-known/metadata/inline = known; unknown = unresolved." });
+]).annotate({ description: "How a credential binds to a surface. `source` also signals knowledge state: spec/well-known/metadata/http/cli = known; unknown = unresolved." });
 
 // ── Credential — what it is + where you get it (defined once, by id) ───────────
 
 /** Auth-mode vocabulary, derived from Nango (not an exact mirror): `bearer` is
  * our refinement; Nango's `NONE` is modeled by AuthStatus, not as a credential.
  * Exotic types (app/two_step/signature/aws_sigv4) are NAMED but not executed —
- * the flow lives in `setup`; mechanics stays inline/unknown. */
+ * the flow lives in `setup`; mechanics stays http/cli/unknown. */
 export const CredentialType = Schema.Literals([
   "api_key",
   "basic",
@@ -148,7 +168,14 @@ const Variable = Schema.Struct({
 
 /** Fields shared across every surface kind. */
 const surfaceBase = {
-  name: Schema.String,
+  slug: Schema.String.annotate({
+    description:
+      "Stable identity and URL segment (/{domain}/{slug}/). Assigned SERVER-SIDE at record time " +
+      "(slugified name, deduped within the result) — the model never produces it. On re-discovery, " +
+      "a surface matching a previous one by locator (url/spec/command) KEEPS its prior slug even if " +
+      "renamed, so links never break.",
+  }),
+  name: Schema.String.annotate({ description: "Display name. NOT identity — may change across runs; `slug` is the stable key." }),
   docs: Schema.optional(Schema.String.annotate({ description: "Human docs URL." })),
   basis: Basis,
   auth: AuthStatus,
@@ -159,19 +186,12 @@ const surfaceBase = {
 
 export const Surface = Schema.Union([
   Schema.Struct({
-    type: Schema.Literal("openapi"),
-    spec: Schema.optional(Schema.String.annotate({ description: "OpenAPI doc URL — a POINTER, never inlined ('none' if the spec is absent)." })),
-    url: Schema.optional(Schema.String.annotate({ description: "Only if not derivable from the spec's `servers`." })),
+    type: Schema.Literal("http"),
+    spec: Schema.optional(Schema.String.annotate({ description: "OpenAPI doc URL — a POINTER, never inlined. Absent = specless REST; auth mechanics are then http/unknown, not spec." })),
+    url: Schema.optional(Schema.String.annotate({ description: "Base URL — when there's no spec, or not derivable from the spec's `servers`." })),
     patch: Schema.optional(Schema.Unknown.annotate({ description: "securityScheme overrides for when the spec is wrong or missing a scheme." })),
     ...surfaceBase,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("rest"),
-    url: Schema.optional(Schema.String.annotate({ description: "Base URL (no OpenAPI doc → mechanics are inline)." })),
-    spec: Schema.optional(Schema.String),
-    patch: Schema.optional(Schema.Unknown),
-    ...surfaceBase,
-  }),
+  }).annotate({ description: "A REST/HTTP API, with or without an OpenAPI spec (spec present ⇒ machine-readable)." }),
   Schema.Struct({
     type: Schema.Literal("graphql"),
     url: Schema.optional(Schema.String.annotate({ description: "Expected — a GraphQL schema has no endpoint, so this is how you reach it." })),
@@ -198,23 +218,35 @@ export const Surface = Schema.Union([
     command: Schema.optional(Schema.String.annotate({ description: "The command name, e.g. 'wrangler'." })),
     ...surfaceBase,
   }),
-]).annotate({ description: "One integration surface. Per-`type` fields: openapi/rest carry spec/url/patch; graphql carries url+spec; mcp carries url+transports; cli carries packages+command." });
+]).annotate({ description: "One integration surface. Per-`type` fields: http carries spec/url/patch; graphql carries url+spec; mcp carries url+transports; cli carries packages+command." });
 
 // ── Top-level result ───────────────────────────────────────────────────────────
 export const DiscoveryResult = Schema.Struct({
+  version: Schema.Literal(DISCOVERY_VERSION).annotate({ description: "Payload schema version. Readers dispatch on this — never shape-sniff." }),
   domain: Schema.String,
   summary: Schema.String.annotate({ description: "One-line overview of the service's integration surface." }),
-  discoveredAt: Schema.optional(Schema.String.annotate({ description: "ISO timestamp this result was produced — for staleness of `detected` facts." })),
+  discoveredAt: Schema.optional(Schema.String.annotate({ description: "ISO timestamp this result was produced — for staleness of `discovered` facts (detected facts carry their own verifiedAt)." })),
   credentials: Schema.Record(Schema.String, Credential).annotate({ description: "Global credential registry, keyed by id — defined once, referenced by surface auth." }),
-  surfaces: Schema.Array(Surface).annotate({ description: "Typed surface inventory (openapi/rest/graphql/mcp/cli)." }),
-}).annotate({ description: "The integrations.sh discovery result (v2): a global credential registry + a typed list of surfaces." });
+  surfaces: Schema.Array(Surface).annotate({ description: "Typed surface inventory (http/graphql/mcp/cli)." }),
+}).annotate({ description: "The integrations.sh discovery result (v3): a global credential registry + a typed list of surfaces." });
+
+/** The KV row for a domain — the ONE envelope entry.ts writes and every
+ * render-time reader (surface page, SSR domain page, /api/{domain}/discovery)
+ * parses. Previously untyped and re-declared inline by each consumer. */
+export const StoredDiscovery = Schema.Struct({
+  result: DiscoveryResult,
+  discoveredAt: Schema.String.annotate({ description: "When this row was written." }),
+  model: Schema.String.annotate({ description: "The model that produced it (or 'cache-backfill')." }),
+});
 
 // ── Inferred types (single source of truth — replace the hand-written interfaces) ──
 export type Basis = typeof Basis.Type;
 export type Mechanics = typeof Mechanics.Type;
 export type Credential = typeof Credential.Type;
+export type CredentialType = typeof CredentialType.Type;
 export type CredentialUse = typeof CredentialUse.Type;
 export type AuthEntry = typeof AuthEntry.Type;
 export type AuthStatus = typeof AuthStatus.Type;
 export type Surface = typeof Surface.Type;
 export type DiscoveryResult = typeof DiscoveryResult.Type;
+export type StoredDiscovery = typeof StoredDiscovery.Type;

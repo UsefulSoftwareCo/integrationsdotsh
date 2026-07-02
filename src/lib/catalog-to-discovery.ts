@@ -1,5 +1,5 @@
 /**
- * Catalog → discovery format.
+ * Catalog → discovery format (v3).
  *
  * The discovery JSON (DiscoveryResult — credentials + typed surfaces) is the one
  * format the whole site derives from. The static registry predates it, so we
@@ -8,26 +8,19 @@
  * `unknown` (or `none` when the record says so) — live discovery enriches them.
  *
  * Basis is `detected`/`registry`: these came from machine-normalized registries.
+ * Slugs are assigned here at build time (slugified name, deduped per domain) —
+ * the prerendered pages link to them, and the worker's slug-continuity pass
+ * treats them as priors so live discovery keeps the same URLs.
  */
 import type { Integration } from "./types.ts";
+import { DISCOVERY_VERSION } from "./discovery-schema.ts";
+import type { Surface as SurfaceView } from "./surface-view.ts";
+import { assignSlug } from "./discover.ts";
 
 const REG_BASIS = { via: "detected" as const, signal: "registry" };
 
-/** A discovery surface (loose — the strict shape lives in discovery-schema.ts). */
-export interface BaselineSurface {
-  name: string;
-  type: string;
-  docs?: string;
-  basis: { via: "detected"; signal: string };
-  auth: { status: "none"; basis: { via: "detected"; signal: string } } | { status: "unknown" };
-  url?: string;
-  spec?: string;
-  transports?: string[];
-  command?: string;
-  notes?: string;
-}
-
-export function recordToSurface(r: Integration): BaselineSurface | null {
+/** A catalog record as a v3 discovery surface (sans slug — assigned by the caller). */
+export function recordToSurface(r: Integration): Omit<SurfaceView, "slug"> | null {
   switch (r.kind) {
     case "mcp":
       return {
@@ -40,7 +33,7 @@ export function recordToSurface(r: Integration): BaselineSurface | null {
         auth: r.mcp?.isAuthless ? { status: "none", basis: REG_BASIS } : { status: "unknown" },
       };
     case "openapi":
-      return { name: r.name, type: "openapi", docs: r.url, basis: REG_BASIS, spec: r.openapi?.specUrl, url: r.url, auth: { status: "unknown" } };
+      return { name: r.name, type: "http", docs: r.url, basis: REG_BASIS, spec: r.openapi?.specUrl, url: r.url, auth: { status: "unknown" } };
     case "graphql":
       return {
         name: r.name,
@@ -57,8 +50,31 @@ export function recordToSurface(r: Integration): BaselineSurface | null {
   }
 }
 
-/** The baseline DiscoveryResult for a domain, built from its catalog records. */
+/** Baseline surface slug per record id. Slug assignment is order-dependent
+ * (name collisions dedupe with -2, -3…), so EVERY caller must pass records in
+ * the same canonical order — `all`'s order (mcp, openapi, graphql, cli file
+ * order), which is what the /disc JSON endpoint groups by. The domain-page
+ * seed uses this same map so its links agree with the baked JSON. */
+export function baselineSlugs(records: Integration[]): Map<string, string> {
+  const surfaces: { slug: string }[] = [];
+  const byRecordId = new Map<string, string>();
+  for (const r of records) {
+    const s = recordToSurface(r);
+    if (!s) continue;
+    const slug = assignSlug(s.name, surfaces);
+    surfaces.push({ slug });
+    byRecordId.set(r.id, slug);
+  }
+  return byRecordId;
+}
+
+/** The baseline DiscoveryResult (v3 shape) for a domain, from its catalog records. */
 export function catalogDiscovery(domain: string, records: Integration[]) {
-  const surfaces = records.map(recordToSurface).filter((s): s is BaselineSurface => s !== null);
-  return { domain, summary: "", credentials: {}, surfaces };
+  const slugs = baselineSlugs(records);
+  const surfaces: SurfaceView[] = [];
+  for (const r of records) {
+    const s = recordToSurface(r);
+    if (s) surfaces.push({ ...s, slug: slugs.get(r.id)! });
+  }
+  return { version: DISCOVERY_VERSION, domain, summary: "", credentials: {}, surfaces };
 }

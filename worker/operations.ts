@@ -11,6 +11,7 @@ import { Effect, Schema } from "effect";
 import { detect } from "../src/lib/detect.ts";
 import { discover, type ChatFn, type DiscoverEvent, type WebBackend } from "../src/lib/discover.ts";
 import { naiveWeb } from "../src/lib/contextdev.ts";
+import { Credential, CredentialType, DISCOVERY_VERSION, Surface } from "../src/lib/discovery-schema.ts";
 
 export const DetectParams = Schema.Struct({ domain: Schema.String });
 
@@ -46,15 +47,21 @@ export const runDetect = (domain: string): Effect.Effect<typeof DetectionResult.
 export const DiscoverParams = Schema.Struct({ domain: Schema.String });
 
 export const DiscoverResult = Schema.Struct({
+  /** Payload schema version (v3) — readers dispatch on it, never shape-sniff. */
+  version: Schema.Literal(DISCOVERY_VERSION),
   domain: Schema.String,
   /** The full deterministic detection result (always run first, seeds the agent). */
   detect: Schema.Unknown,
   /** One-line summary of the service's integration surface. */
   summary: Schema.optional(Schema.String),
-  /** Global credential registry: { id: Credential } — defined once, referenced per surface. */
-  credentials: Schema.optional(Schema.Unknown),
-  /** Typed surface inventory (openapi/rest/graphql/mcp/cli), each with auth entries referencing credentials. */
-  surfaces: Schema.optional(Schema.Unknown),
+  /** ISO timestamp this result was produced. */
+  discoveredAt: Schema.String,
+  /** Global credential registry, keyed by id — the CANONICAL Credential schema,
+   * so /openapi.json and the MCP tool result publish the full annotated model. */
+  credentials: Schema.optional(Schema.Record(Schema.String, Credential)),
+  /** Typed surface inventory (http/graphql/mcp/cli), each with a stable slug
+   * and auth entries referencing credentials. */
+  surfaces: Schema.optional(Schema.Array(Surface)),
   /** Whether the LLM agent ran (false = no model binding available). */
   usedLlm: Schema.Boolean,
 });
@@ -80,16 +87,28 @@ export const setWebBackend = (b: WebBackend): void => {
   webBackend = b;
 };
 
-/** Flatten the engine's DiscoveryResult into the JSON-clean wire shape (v2:
- * a global credentials registry + a typed surfaces list). */
+/** The engine's Credential.type is a free string (the model writes it);
+ * the wire schema is the CredentialType enum. Coerce off-vocabulary → custom. */
+const CRED_TYPES = new Set<string>(CredentialType.literals);
+const coerceCredentials = (creds: Record<string, { type: string }> | undefined) => {
+  if (!creds) return undefined;
+  return Object.fromEntries(
+    Object.entries(creds).map(([id, c]) => [id, { ...c, type: CRED_TYPES.has(c.type) ? c.type : "custom" }]),
+  );
+};
+
+/** Flatten the engine's DiscoveryResult into the JSON-clean wire shape (v3:
+ * versioned; a global credentials registry + a typed, slugged surfaces list). */
 const pack = (domain: string, detect: unknown, disc: Awaited<ReturnType<typeof discover>>, usedLlm: boolean) =>
   JSON.parse(
     JSON.stringify({
+      version: DISCOVERY_VERSION,
       domain,
       detect,
       usedLlm,
+      discoveredAt: new Date().toISOString(),
       summary: disc?.summary,
-      credentials: disc?.credentials,
+      credentials: coerceCredentials(disc?.credentials),
       surfaces: disc?.surfaces,
     }),
   );
@@ -99,7 +118,7 @@ const pack = (domain: string, detect: unknown, disc: Awaited<ReturnType<typeof d
 export const runDiscover = (domain: string): Effect.Effect<typeof DiscoverResult.Type> =>
   Effect.promise(async () => {
     const d = await detect(domain.trim().toLowerCase());
-    if (!chatFn) return JSON.parse(JSON.stringify({ domain: d.domain, detect: d, usedLlm: false }));
+    if (!chatFn) return pack(d.domain, d, null, false);
     const disc = await discover(d.domain, d, chatFn, webBackend ?? naiveWeb()).catch(() => null);
     return pack(d.domain, d, disc, true);
   });
@@ -115,7 +134,7 @@ export const discoverWithProgress = async (
   emit({ kind: "progress", message: "Checking well-known endpoints…" });
   const d = await detect(domain.trim().toLowerCase());
   emit({ kind: "progress", message: d.found.length ? `Detected: ${d.found.join(", ")}` : "No standard signals — searching" });
-  if (!chatFn) return JSON.parse(JSON.stringify({ domain: d.domain, detect: d, usedLlm: false }));
+  if (!chatFn) return pack(d.domain, d, null, false);
   const disc = await discover(d.domain, d, chatFn, webBackend ?? naiveWeb(), emit).catch(() => null);
   return pack(d.domain, d, disc, true);
 };

@@ -1,9 +1,17 @@
-# integrations.sh — Discovery Data Model (v2)
+# integrations.sh — Discovery Data Model (v3)
 
 The structured payload the discovery agent produces for a service: its
 integration **surfaces** (API / GraphQL / MCP / CLI) and how to **authenticate**
 to each.
 
+> **v3 changes** (breaking, no dual-version readers): `version: 3` on the
+> result; every surface carries a server-assigned **`slug`** — stable identity
+> and URL segment (`/{domain}/{slug}/`), preserved across re-runs by locator
+> match, never model-authored; `openapi`/`rest` collapsed into one **`http`**
+> variant (spec presence already carries the distinction); Mechanics `inline`
+> split into **`http`** and **`cli`**; `Basis.detected` gains optional
+> `verifiedAt`; the KV envelope is typed (`StoredDiscovery`).
+>
 > **v2 changes** (from stress-testing against 18 services + three reference
 > schemas): built around **discriminated unions**; surfaces collapsed into one
 > typed list; auth vocabulary aligned to Nango; MCP/CLI structure aligned to the
@@ -33,9 +41,9 @@ mature catalogs converge on the same shapes. We borrow from three:
 1. **Discriminated unions are the backbone.** Four of them, each keyed by a tag
    so every variant carries only its own fields and a consumer dispatches on the
    tag:
-   - **Surface** — discriminated by `type` (`openapi | rest | graphql | mcp | cli`)
+   - **Surface** — discriminated by `type` (`http | graphql | mcp | cli`)
    - **AuthStatus** — discriminated by `status` (`none | required | unknown`)
-   - **Mechanics** — discriminated by `source` (where ONE credential's binding resolves)
+   - **Mechanics** — discriminated by `source` (`spec | well-known | metadata | http | cli | unknown`)
    - **Basis** — discriminated by `via` (`detected | discovered` — how we learned it)
 
    (`Credential.type` is a flat `Literals` enum, not a tagged union — the
@@ -62,8 +70,9 @@ mature catalogs converge on the same shapes. We borrow from three:
 {
   "domain": "cloudflare.com",
   "summary": "One-line overview of the integration surface.",
+  "version": 3,                                 // readers dispatch on this, never shape-sniff
   "credentials": { "<id>": Credential, ... },  // shared registry, defined once
-  "surfaces": [ Surface, ... ]                  // ONE typed list (was apis[]/graphql[]/mcp[]/cli[])
+  "surfaces": [ Surface, ... ]                  // ONE typed list; each carries a stable server-assigned `slug`
 }
 ```
 

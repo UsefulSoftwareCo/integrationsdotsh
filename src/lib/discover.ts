@@ -1,6 +1,6 @@
 /**
  * Discovery agent — a bounded agentic loop that maps a domain's full public
- * integration surface and how to authenticate with it (the v2 data model;
+ * integration surface and how to authenticate with it (the v3 data model;
  * see docs/discovery-model.md).
  *
  * The model drives its own trajectory: it searches and scrapes pages (via
@@ -8,10 +8,15 @@
  * every surface (API / GraphQL / MCP / CLI) and the credentials they accept.
  *
  * Output is built from FOUR discriminated unions:
- *   - Surface     (by `type`: openapi | rest | graphql | mcp | cli)
+ *   - Surface     (by `type`: http | graphql | mcp | cli)
  *   - Credential  (by `type`: Nango auth-mode vocabulary)
- *   - Mechanics   (by `source`: spec | well-known | metadata | inline | unknown)
+ *   - Mechanics   (by `source`: spec | well-known | metadata | http | cli | unknown)
  *   - Basis  (by `via`: detected | discovered)
+ *
+ * Surfaces get a server-assigned `slug` at record time (slugified name,
+ * deduped) — identity and URL segment. The model never produces it; the wire
+ * layer (worker/operations.ts) preserves prior slugs across re-runs by
+ * locator match.
  *
  * Credentials are a top-level registry, defined once; each surface's `auth`
  * entries reference a credential by id and carry only the per-surface binding.
@@ -55,7 +60,7 @@ export interface WebBackend {
 
 /** How we learned a thing exists — a trust/verifiability axis. */
 export type Basis =
-  | { via: "detected"; signal: string } // re-verifiable machine signal
+  | { via: "detected"; signal: string; verifiedAt?: string } // re-verifiable machine signal
   | { via: "discovered"; evidence: string[] }; // doc URLs the agent read
 
 /** How ONE credential binds to a surface — where the binding resolves from. */
@@ -63,7 +68,8 @@ export type Mechanics =
   | { source: "spec"; scheme: string } // the OpenAPI securityScheme name this credential satisfies
   | { source: "well-known" } // derive from surface url via RFC 9728/8414
   | { source: "metadata"; url: string } // well-known at a non-standard location
-  | { source: "inline"; in?: "header" | "query" | "body" | "path"; headerName?: string; scheme?: string; paramName?: string; command?: string; env?: string[] }
+  | { source: "http"; in?: "header" | "query" | "body" | "path"; headerName?: string; scheme?: string; paramName?: string }
+  | { source: "cli"; command?: string; env?: string[] }
   | { source: "unknown" };
 
 /** A credential: what it is + where you get it. Defined once, referenced by id. */
@@ -97,14 +103,16 @@ export type AuthStatus =
 
 /** One integration surface. Per-`type` fields are optional on the base. */
 export interface Surface {
+  /** Server-assigned at record time — identity + URL segment. Never model-authored. */
+  slug: string;
   name: string;
-  type: string; // openapi | rest | graphql | mcp | cli
+  type: string; // http | graphql | mcp | cli
   docs?: string;
   basis: Basis;
   auth: AuthStatus;
-  // openapi / rest / graphql:
+  // http / graphql:
   spec?: string; // OpenAPI URL, or "introspection" / SDL URL for graphql
-  url?: string; // endpoint (required for graphql/mcp; rest without spec)
+  url?: string; // endpoint (required for graphql/mcp; http without spec)
   patch?: unknown; // securityScheme overrides
   // mcp:
   transports?: string[];
@@ -139,13 +147,13 @@ const fn = (name: string, description: string, properties: Record<string, unknow
 });
 
 const MECHANICS_PROPS = {
-  source: { type: "string", description: "spec | well-known | metadata | inline | unknown" },
-  scheme: { type: "string", description: "spec: the OpenAPI securityScheme name this credential satisfies. inline: the HTTP scheme prefix, e.g. Bearer." },
-  in: { type: "string", description: "inline (HTTP): header | query | body | path" },
+  source: { type: "string", description: "spec | well-known | metadata | http | cli | unknown" },
+  scheme: { type: "string", description: "spec: the OpenAPI securityScheme name this credential satisfies. http: the HTTP scheme prefix, e.g. Bearer." },
+  in: { type: "string", description: "http: header | query | body | path" },
   headerName: { type: "string" },
   paramName: { type: "string" },
-  command: { type: "string", description: "inline (CLI): a command to run, e.g. 'wrangler login'" },
-  env: { type: "array", items: { type: "string" }, description: "inline (CLI): env var(s) to set, e.g. ['CLOUDFLARE_API_TOKEN']" },
+  command: { type: "string", description: "cli: a command to run, e.g. 'wrangler login'" },
+  env: { type: "array", items: { type: "string" }, description: "cli: env var(s) to set, e.g. ['CLOUDFLARE_API_TOKEN']" },
   url: { type: "string", description: "metadata: the non-standard well-known URL" },
 };
 
@@ -165,7 +173,7 @@ const AUTH_ENTRY_PROPS = {
 
 const SURFACE_PROPS = {
   name: { type: "string" },
-  type: { type: "string", description: "openapi | rest | graphql | mcp | cli" },
+  type: { type: "string", description: "http (REST/OpenAPI) | graphql | mcp | cli" },
   docs: { type: "string" },
   spec: { type: "string", description: "OpenAPI URL, or 'introspection'/SDL URL for graphql — a POINTER, never inline a spec" },
   url: { type: "string", description: "endpoint/home URL — required for graphql & mcp" },
@@ -211,17 +219,17 @@ const TOOLS = [
 const SYSTEM =
   "You are the discovery agent for integrations.sh. Given a service domain, map its COMPLETE public integration " +
   "surface for developers and AI agents, and how to authenticate.\n\n" +
-  "Find every surface: REST/OpenAPI APIs, GraphQL APIs, MCP servers, and CLIs — and every credential each accepts.\n\n" +
+  "Find every surface: HTTP/REST APIs (type 'http' — attach the OpenAPI spec URL when one exists), GraphQL APIs, MCP servers, and CLIs — and every credential each accepts.\n\n" +
   "Data model — credentials are GLOBAL, bindings are PER-SURFACE:\n" +
   "- First record_credential for each distinct credential (API key, OAuth app, etc.) with a short id, what it is, and where to get it (markdown setup). Define each ONCE even if reused.\n" +
   "- Then record_surface for each surface. Set `authStatus`: 'required' (give `auth`), 'none' (the surface is PUBLIC/needs no credential — give `publicEvidence`), or 'unknown' (you couldn't determine it). Don't leave it required-with-empty.\n" +
   "- For authStatus=required, `auth` is the OR alternatives (any one works). Each entry's `use` is the credentials sent TOGETHER (AND), and EACH use carries its OWN `mechanics` — so an app-id in one header and an api-key in a differently-named header are two uses in one entry, each with its own placement.\n\n" +
-  "Each use's mechanics.source tells where its binding resolves from: 'spec' (give the ONE OpenAPI securityScheme name this credential satisfies, in `scheme`), 'well-known' (MCP OAuth, derives from the url), 'inline' (you read it from docs — give in/headerName/scheme for HTTP, or command/env for CLI), or 'unknown' (it exists but you couldn't pin the mechanics).\n\n" +
+  "Each use's mechanics.source tells where its binding resolves from: 'spec' (give the ONE OpenAPI securityScheme name this credential satisfies, in `scheme`), 'well-known' (MCP OAuth, derives from the url), 'http' (you read it from docs — give in/headerName/scheme), 'cli' (command/env), or 'unknown' (it exists but you couldn't pin the mechanics).\n\n" +
   "How to work — page by page:\n" +
   "- Start with web_search to find the key developer pages. Then read the most relevant with scrape_page — issue SEVERAL scrape_page calls in the SAME turn so they run in parallel; don't read one, wait, read the next.\n" +
   "- After a batch of reads, record_credential / record_surface for what those pages revealed before reading more. Pass `evidence` (the doc URLs you read) on each surface and auth entry.\n" +
   "- Capture spec/schema URLs as POINTERS; never inline a spec. Only state URLs/endpoints you actually saw. Never invent them.\n" +
-  "- Exotic auth (AWS SigV4, GitHub-App JWT exchange) — name the credential `type` (signature/aws_sigv4/app/two_step) and write the flow in `setup`; you don't need to model its execution. Use mechanics.source 'inline' or 'unknown'.\n" +
+  "- Exotic auth (AWS SigV4, GitHub-App JWT exchange) — name the credential `type` (signature/aws_sigv4/app/two_step) and write the flow in `setup`; you don't need to model its execution. Use mechanics.source 'http', 'cli', or 'unknown'.\n" +
   "- When done, call finish with a one-line summary. Omit surface types that don't exist.";
 
 const MAX_STEPS = 16;
@@ -294,6 +302,7 @@ export async function discover(
         const key = `${s.type}|${(s.spec || s.url || s.name).toLowerCase()}`;
         if (surfaceKeys.has(key)) return `Already recorded ${s.name}.`;
         surfaceKeys.add(key);
+        s.slug = assignSlug(s.name, surfaces);
         surfaces.push(s);
         emit?.({ kind: "surface", surface: s });
         const n = s.auth.status === "required" ? s.auth.entries.length : 0;
@@ -372,6 +381,24 @@ function hostPath(url: string): string {
 }
 
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+
+/** URL-safe slug from a display name. */
+export function slugifyName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/** Server-assigned surface slug: slugified name, deduped within the result
+ * (-2, -3… on collision). Prior-run continuity is applied later by the wire
+ * layer, which rewrites slugs to match the previous result by locator. */
+export function assignSlug(name: string, existing: { slug: string }[]): string {
+  const base = slugifyName(name) || "surface";
+  let slug = base;
+  for (let n = 2; existing.some((s) => s.slug === slug); n++) slug = `${base}-${n}`;
+  return slug;
+}
 const strArr = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0) : []);
 
 function normalizeBasis(evidence: unknown): Basis {
@@ -388,16 +415,22 @@ function normalizeMechanics(o: unknown): Mechanics {
       return { source: "well-known" };
     case "metadata":
       return { source: "metadata", url: str(m.url) ?? "" };
+    // "inline" accepted as a legacy alias; keys decide which v3 variant it is.
+    case "http":
+    case "cli":
     case "inline": {
+      const command = str(m.command);
+      const env = strArr(m.env);
+      if (source === "cli" || ((command || env.length) && source !== "http")) {
+        return { source: "cli", command, env: env.length ? env : undefined };
+      }
       const inVal = str(m.in);
       return {
-        source: "inline",
+        source: "http",
         in: inVal === "header" || inVal === "query" || inVal === "body" || inVal === "path" ? inVal : undefined,
         headerName: str(m.headerName),
         scheme: str(m.scheme),
         paramName: str(m.paramName),
-        command: str(m.command),
-        env: strArr(m.env).length ? strArr(m.env) : undefined,
       };
     }
     default:
@@ -450,6 +483,9 @@ function normalizeCredential(o: Record<string, unknown>): Credential | null {
   };
 }
 
+/** openapi/rest (v2 vocabulary, still occasionally emitted) fold into http. */
+const foldType = (t: string): string => (t === "openapi" || t === "rest" ? "http" : t);
+
 function normalizeSurface(o: Record<string, unknown>): Surface | null {
   const type = str(o.type);
   const name = str(o.name);
@@ -462,8 +498,9 @@ function normalizeSurface(o: Record<string, unknown>): Surface | null {
     if (rt && id) packages.push({ registryType: rt, identifier: id, runtimeHint: str(pp.runtimeHint) });
   }
   return {
+    slug: "", // assigned by the caller (recordSurface) — stable, deduped
     name,
-    type: type.toLowerCase(),
+    type: foldType(type.toLowerCase()),
     docs: str(o.docs),
     basis: normalizeBasis(o.evidence),
     auth: normalizeAuthStatus(o),
@@ -516,6 +553,8 @@ function normalizeVariables(v: unknown): Surface["variables"] {
  * OAuth credential, plus the MCP and OpenAPI surfaces detect found, are
  * authoritative; anything newly added is emitted so the client stays in sync. */
 function merge(r: DiscoveryResult, detect: DetectionResult, emit?: Emit): DiscoveryResult {
+  // Detect probes ran as part of THIS discovery, so their signals verify now.
+  const verifiedAt = new Date().toISOString();
   const oauth = detect.auth?.oauth;
   const hasDetOauth = oauth && (oauth.authorizationEndpoint || oauth.tokenEndpoint || oauth.registrationEndpoint || oauth.scopes?.length);
 
@@ -543,26 +582,26 @@ function merge(r: DiscoveryResult, detect: DetectionResult, emit?: Emit): Discov
   for (const mcp of detect.mcp ?? []) {
     const existing = r.surfaces.find((s) => s.type === "mcp" && s.url === mcp.url);
     if (existing) {
-      existing.basis = { via: "detected", signal: "mcp:initialize" };
+      existing.basis = { via: "detected", signal: "mcp:initialize", verifiedAt };
       continue;
     }
     const auth: AuthStatus =
       hasDetOauth || mcp.auth
-        ? { status: "required", entries: [{ use: [{ id: ensureOauthCred(), mechanics: { source: "well-known" } }], basis: { via: "detected", signal: "oauth-protected-resource" } }] }
+        ? { status: "required", entries: [{ use: [{ id: ensureOauthCred(), mechanics: { source: "well-known" } }], basis: { via: "detected", signal: "oauth-protected-resource", verifiedAt } }] }
         : { status: "unknown" };
-    const s: Surface = { name: "MCP server", type: "mcp", url: mcp.url, basis: { via: "detected", signal: "mcp:initialize" }, auth, notes: mcp.dcr || mcp.cimd ? "Self-onboarding (DCR/CIMD)" : undefined };
+    const s: Surface = { slug: assignSlug("MCP server", r.surfaces), name: "MCP server", type: "mcp", url: mcp.url, basis: { via: "detected", signal: "mcp:initialize", verifiedAt }, auth, notes: mcp.dcr || mcp.cimd ? "Self-onboarding (DCR/CIMD)" : undefined };
     r.surfaces.unshift(s);
     emit?.({ kind: "surface", surface: s });
   }
 
   // Detected OpenAPI spec — authoritative. Auth is `unknown` (detect doesn't parse schemes).
   if (detect.apiSchema) {
-    const existing = r.surfaces.find((s) => (s.type === "openapi" || s.type === "rest") && (s.spec === detect.apiSchema!.url || s.url === detect.apiSchema!.url));
+    const existing = r.surfaces.find((s) => s.type === "http" && (s.spec === detect.apiSchema!.url || s.url === detect.apiSchema!.url));
     if (existing) {
-      existing.basis = { via: "detected", signal: "openapi:schema" };
+      existing.basis = { via: "detected", signal: "openapi:schema", verifiedAt };
       if (!existing.spec) existing.spec = detect.apiSchema.url;
-    } else if (!has((s) => s.type === "openapi")) {
-      const s: Surface = { name: "OpenAPI", type: "openapi", spec: detect.apiSchema.url, basis: { via: "detected", signal: "openapi:schema" }, auth: { status: "unknown" } };
+    } else if (!has((s) => s.type === "http")) {
+      const s: Surface = { slug: assignSlug("OpenAPI", r.surfaces), name: "OpenAPI", type: "http", spec: detect.apiSchema.url, basis: { via: "detected", signal: "openapi:schema", verifiedAt }, auth: { status: "unknown" } };
       r.surfaces.push(s);
       emit?.({ kind: "surface", surface: s });
     }

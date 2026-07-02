@@ -29,7 +29,7 @@ const { domain, catalog, initialData = null } = Astro.props;
 const catalogKinds = KIND_ORDER.filter((k) => catalog.some((s) => s.kind === k && s.items.length));
 const total = catalog.reduce((n, s) => n + s.items.length, 0);
 const discoveredKinds = KIND_ORDER.filter((k) =>
-  (initialData?.surfaces ?? []).some((s) => (s.type === "rest" ? "openapi" : s.type) === k),
+  (initialData?.surfaces ?? []).some((s) => (s.type === "http" || s.type === "rest" ? "openapi" : s.type) === k),
 );
 const kinds = catalogKinds.length ? catalogKinds : discoveredKinds;
 const count = total || (initialData?.surfaces?.length ?? 0);

@@ -15,12 +15,13 @@ import { handle } from "@astrojs/cloudflare/handler";
 import { apiHandler } from "./api.ts";
 import { setChat, setWebBackend, discoverWithProgress } from "./operations.ts";
 import { contextWeb, naiveWeb } from "../src/lib/contextdev.ts";
+import type { Surface } from "../src/lib/surface-view.ts";
 import type { EdgeCaches, Env, ExecutionContext } from "./env.ts";
 import { McpDurableObject } from "./mcp-do.ts";
 
 // Bump when detect/discover output shape or logic changes, so the edge Cache API
 // (which survives deploys) stops serving results produced by the old code.
-const CACHE_VERSION = "13";
+const CACHE_VERSION = "14"; // 14: v3 payload (slugs, http surface type, split mechanics)
 
 // The discovery-loop model. gpt-5.4-mini drives the agentic tool-calling loop
 // (search/sitemap/scrape/report) — ~1s per tool-decision turn on chat/completions.
@@ -73,6 +74,51 @@ function wireAi(env: Env): void {
     const toolCalls = (message.tool_calls ?? []).map((tc) => ({ id: tc.id, name: tc.function.name, arguments: parseArgs(tc.function.arguments) }));
     return { message, toolCalls };
   });
+}
+
+/** A surface's locator — the stable thing it points at, independent of its
+ * display name. Used to carry slugs across re-discovery. */
+const locatorOf = (s: Surface): string | undefined => {
+  const loc = s.type === "cli" ? (s.command ?? s.packages?.[0]?.identifier) : (s.url ?? s.spec);
+  return loc ? `${s.type}|${loc.toLowerCase()}` : undefined;
+};
+
+/** Slug continuity: a fresh result's surface that matches a PRIOR surface by
+ * locator keeps the prior slug, even if the model renamed it — /{domain}/{slug}/
+ * links never break across re-runs. Collisions re-suffix deterministically. */
+function preserveSlugs(surfaces: Surface[], prior: Surface[]): void {
+  const bySlugLoc = new Map<string, string>();
+  for (const p of prior) {
+    const loc = locatorOf(p);
+    if (loc && p.slug) bySlugLoc.set(loc, p.slug);
+  }
+  const taken = new Set<string>();
+  for (const s of surfaces) {
+    const loc = locatorOf(s);
+    const inherited = loc ? bySlugLoc.get(loc) : undefined;
+    let slug = inherited ?? s.slug;
+    const base = slug;
+    for (let n = 2; taken.has(slug); n++) slug = `${base}-${n}`;
+    s.slug = slug;
+    taken.add(slug);
+  }
+}
+
+/** Prior surfaces for a domain: the stored KV result, else the static-catalog
+ * baseline (whose slugs the prerendered pages already link to). */
+async function priorSurfaces(env: Env, origin: string, domain: string): Promise<Surface[]> {
+  try {
+    const raw = await env.DISCOVERY.get(domain);
+    if (raw) {
+      const stored = JSON.parse(raw) as { result?: { surfaces?: Surface[] } };
+      if (stored.result?.surfaces?.length) return stored.result.surfaces;
+    }
+    const res = await env.ASSETS.fetch(`${origin}/disc/${encodeURIComponent(domain)}.json`);
+    if (res.ok) return ((await res.json()) as { surfaces?: Surface[] }).surfaces ?? [];
+  } catch {
+    /* no priors — fresh slugs stand */
+  }
+  return [];
 }
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -196,11 +242,13 @@ export function createExports(manifest: SSRManifest) {
               ctx.waitUntil(env.DISCOVERY.put(result.domain, JSON.stringify({ result, discoveredAt: new Date().toISOString(), model: OPENAI_MODEL })));
             }
           } else {
+            const prior = await priorSurfaces(env, url.origin, domain.trim().toLowerCase());
             const result = await discoverWithProgress(domain, (ev) => {
               if (ev.kind === "progress") void send("progress", { message: ev.message });
               else if (ev.kind === "credential") void send("credential", { id: ev.id, credential: ev.credential });
               else if (ev.kind === "surface") void send("surface", ev.surface);
             });
+            if (Array.isArray(result.surfaces)) preserveSlugs(result.surfaces as Surface[], prior);
             await send("done", result);
             const toCache = new Response(JSON.stringify(result), {
               headers: { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*", "cache-control": "public, max-age=86400" },

@@ -4,10 +4,11 @@
  * worker can SSR the exact same page at runtime when a stored discovery
  * exists. Build-time only — joins against output/*.json via data.ts.
  */
-import { byId } from "./data.ts";
+import { all, byId } from "./data.ts";
 import type { IndexRecord } from "./data.ts";
 import type { CatalogSection } from "../components/Surfaces.tsx";
 import { KIND_ORDER, SECTION_LABEL } from "./domain-labels.ts";
+import { baselineSlugs } from "./catalog-to-discovery.ts";
 
 /** Per-record meta hint shown on the right of each row. The slim index record
  * lacks per-format detail, so join back to the full record via `byId`. */
@@ -44,15 +45,19 @@ export function domainSections(records: IndexRecord[]) {
 }
 
 /** The catalog seed passed to the Surfaces island — SSR'd for SEO, then merged
- * with discovery (stored or run live). */
+ * with discovery (stored or run live). Item slugs are the BASELINE SURFACE
+ * slugs (computed over the domain's records in `all` order, exactly as the
+ * /disc JSON does), so island links and the surface route always agree. */
 export function catalogSeed(records: IndexRecord[]): CatalogSection[] {
+  const ids = new Set(records.map((r) => r.id));
+  const slugById = baselineSlugs(all.filter((r) => ids.has(r.id)));
   return domainSections(records).map((s) => ({
     kind: s.kind,
     label: s.label,
     items: s.items.map((r) => ({
       name: r.name,
       description: r.description,
-      slug: r.slug,
+      slug: slugById.get(r.id) ?? r.slug,
       kind: r.kind,
       meta: metaFor(r),
       ...identityFor(r),

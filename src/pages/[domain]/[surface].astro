@@ -19,7 +19,6 @@ import {
   hostOf,
   credCta,
   mechanicsLine,
-  slugifySurface,
   type Credential,
   type DiscoveryDoc,
   type Surface,
@@ -36,7 +35,8 @@ const slug = decodeURIComponent(Astro.params.surface ?? "");
 // plain 404 (Astro renders 404.astro for rewrites to a missing route).
 const looksLikeDomain = domain.includes(".");
 
-const find = (doc?: DiscoveryDoc | null) => (doc?.surfaces ?? []).find((s) => slugifySurface(s.name) === slug);
+// Slugs are server-assigned identity (v3) — match directly.
+const find = (doc?: DiscoveryDoc | null) => (doc?.surfaces ?? []).find((s) => s.slug === slug);
 
 let surface: Surface | undefined;
 let creds: Record<string, Credential> = {};

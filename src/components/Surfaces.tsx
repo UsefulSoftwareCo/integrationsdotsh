@@ -13,11 +13,11 @@
  * enters the client bundle).
  */
 import { useEffect, useState } from "react";
-import type { Basis, Credential, Surface, AuthStatus, DiscoveryResult } from "../lib/discovery-schema.ts";
-import { credCta, hostOf, slugifySurface } from "../lib/surface-view.ts";
+import type { Credential, DiscoveryResult } from "../lib/discovery-schema.ts";
+import { credCta, hostOf, type AuthStatus, type Basis, type DiscoveryDoc, type Surface } from "../lib/surface-view.ts";
 import Setup from "./surface/Setup.tsx";
 
-export type DiscoverData = Partial<Pick<DiscoveryResult, "summary" | "credentials" | "surfaces">>;
+export type DiscoverData = Partial<Pick<DiscoveryResult, "summary">> & DiscoveryDoc;
 type Creds = DiscoveryResult["credentials"];
 
 /** A static catalog entry, pre-flattened by the page (identity for dedup). */
@@ -38,8 +38,9 @@ export interface CatalogSection {
 
 const KIND_ORDER = ["mcp", "openapi", "graphql", "cli"] as const;
 const KIND_LABEL: Record<string, string> = { mcp: "MCP servers", openapi: "REST · OpenAPI", graphql: "GraphQL", cli: "CLI" };
-/** surface.type → page section kind (rest folds into openapi). */
-const kindOf = (t: string): string => (t === "rest" ? "openapi" : t);
+/** surface.type → page section kind (v3 `http` and v2 openapi/rest share the
+ * catalog's `openapi` section key). */
+const kindOf = (t: string): string => (t === "http" || t === "rest" ? "openapi" : t);
 const norm = (s: string) => s.trim().toLowerCase();
 
 function surfaceIdentity(s: Surface): string | undefined {
@@ -48,11 +49,10 @@ function surfaceIdentity(s: Surface): string | undefined {
       return s.url;
     case "graphql":
       return s.url ?? s.spec;
-    case "openapi":
-    case "rest":
-      return s.spec ?? s.url;
     case "cli":
       return undefined;
+    default: // http (+ legacy openapi/rest)
+      return s.spec ?? s.url;
   }
 }
 
@@ -62,16 +62,19 @@ function surfaceMeta(s: Surface): string {
       return s.transports?.[0] ?? "mcp";
     case "graphql":
       return "graphql";
-    case "openapi":
-    case "rest":
-      return "rest";
     case "cli":
       return s.command ?? "cli";
+    default: // http (+ legacy openapi/rest)
+      return "rest";
   }
 }
 
-/** Does a discovered surface refer to the same thing as a catalog entry? */
+/** Does a discovered surface refer to the same thing as a catalog entry?
+ * Slug equality is authoritative (the worker's continuity pass keeps slugs
+ * stable across runs); locator match covers a discovered surface enriching a
+ * catalog row that predates it; name match is the last resort. */
 function matches(s: Surface, it: CatalogItem): boolean {
+  if (s.slug && s.slug === it.slug) return true;
   const id = surfaceIdentity(s);
   if (id && (id === it.url || id === it.spec)) return true;
   return norm(s.name) === norm(it.name);
@@ -107,7 +110,7 @@ interface Entry {
  * surface keeps its static `/{kind}/{slug}/` detail page. */
 function buildSections(catalog: CatalogSection[], data: DiscoverData | null, domain: string) {
   const surfaces = data?.surfaces ?? [];
-  const discPage = (s: Surface) => `/${encodeURIComponent(domain)}/${slugifySurface(s.name)}/`;
+  const discPage = (s: Surface) => `/${encodeURIComponent(domain)}/${s.slug}/`;
   const catByKind = new Map(catalog.map((s) => [s.kind, s.items]));
   const out: { kind: string; label: string; entries: Entry[] }[] = [];
   for (const kind of KIND_ORDER) {
@@ -121,8 +124,8 @@ function buildSections(catalog: CatalogSection[], data: DiscoverData | null, dom
         return { key: `c${i}`, name: it.name, href: discPage(discovered[di]), meta: it.meta, surface: discovered[di] };
       }
       // Catalog-only surface — its detail page is served from the baseline JSON
-      // by the same `/{domain}/{slug}/` route (worker), keyed by its name.
-      return { key: `c${i}`, name: it.name, href: `/${encodeURIComponent(domain)}/${slugifySurface(it.name)}/`, meta: it.meta };
+      // by the same `/{domain}/{slug}/` route (worker), keyed by its slug.
+      return { key: `c${i}`, name: it.name, href: `/${encodeURIComponent(domain)}/${it.slug}/`, meta: it.meta };
     });
     discovered.forEach((s, idx) => {
       if (!used.has(idx)) entries.push({ key: `d${idx}`, name: s.name, href: discPage(s), meta: surfaceMeta(s), surface: s });
