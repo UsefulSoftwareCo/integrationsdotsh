@@ -235,8 +235,14 @@ export default {
         logoLink.searchParams.set("publicClientId", env.CONTEXT_DEV_LOGO_CLIENT_ID);
         logoLink.searchParams.set("domain", domain);
         if (theme === "light" || theme === "dark") logoLink.searchParams.set("theme", theme);
-        // Access to the client id is referrer-restricted; identify as the site.
-        upstream = await fetch(logoLink, { headers: { referer: "https://integrations.sh/" } }).catch(() => null);
+        upstream = await fetch(logoLink, {
+          // Access to the client id is referrer-restricted; identify as the site.
+          headers: { referer: "https://integrations.sh/" },
+          // Logo Link serves originals (2048px PNGs for some brands) — have
+          // Cloudflare downscale to the requested size. Ignored (originals pass
+          // through) when the zone doesn't have Image Resizing.
+          cf: { image: { width: size, height: size, fit: "scale-down" } },
+        } as RequestInit).catch(() => null);
       }
       if (!upstream || !isImage(upstream)) {
         upstream = await fetch(
