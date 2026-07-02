@@ -103,9 +103,11 @@ function loadIcons(): Set<string> {
     const recs = JSON.parse(readFileSync(p, "utf8")) as Integration[];
     for (const r of recs) {
       if (!r.icon || !/^https?:\/\//.test(r.icon)) continue;
-      // Skip our own fallback service — those are always valid by construction
-      // and revalidating them spams the favicon endpoint.
+      // Skip our own services — always valid by construction (the /logo proxy
+      // never 404s for a validated domain), and each /logo revalidation would
+      // count against the metered Logo Link upstream.
       if (r.icon.startsWith("https://www.google.com/s2/favicons")) continue;
+      if (r.icon.startsWith("https://integrations.sh/logo/")) continue;
       urls.add(r.icon);
     }
   }

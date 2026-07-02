@@ -226,7 +226,7 @@ ${navHtml(stars)}
 <main><div class="container">
 <nav class="crumb" aria-label="Breadcrumb"><a href="/">registry</a><span class="sep">/</span><a href="/${esc(domain)}/">${esc(domain)}</a><span class="sep">/</span><span>${esc(surface.name)}</span></nav>
 <header class="head">
-<div class="favicon"><span class="fav-letter">${letter}</span><img src="https://${esc(domain)}/favicon.ico" width="22" height="22" alt="" loading="lazy" onerror="this.remove()"></div>
+<div class="favicon"><span class="fav-letter">${letter}</span><img src="/logo/${esc(domain)}" width="22" height="22" alt="" loading="lazy" onerror="this.remove()"></div>
 <div><h1>${esc(surface.name)}</h1><p class="meta"><span>${esc(STYPE[surface.type] ?? surface.type)}</span>${provBadge(surface.basis)}</p></div>
 </header>
 ${connect ? `<section><div class="sec-header"><span class="sec-label">${esc(connect.label)}</span></div><pre class="code-block">${esc(connect.cmd)}</pre></section>` : ""}
