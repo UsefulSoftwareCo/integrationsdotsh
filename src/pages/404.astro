@@ -1,0 +1,17 @@
+---
+import Base from "~/layouts/Base.astro";
+import NotFound from "~/components/NotFound.tsx";
+import "~/styles/discovery.css";
+---
+
+<Base title="Not found — integrations.sh">
+  <div class="container">
+    <NotFound client:only="react" />
+  </div>
+</Base>
+
+<style is:global>
+  .nf { max-width: 600px; padding: 72px 0; }
+  .nf-h { font-size: 28px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.2; margin: 0 0 12px; }
+  .nf-sub { color: var(--gray-500); font-size: 14.5px; line-height: 1.6; margin: 0 0 24px; max-width: 60ch; }
+</style>

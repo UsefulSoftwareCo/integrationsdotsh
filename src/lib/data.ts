@@ -1,12 +1,12 @@
 import { readFileSync, existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { Integration, Kind } from "./types.ts";
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-
+// Only ever read at build time (every consumer prerenders), so resolve from
+// the project root: under the adapter the prerender runs out of the bundled
+// server chunks in dist/, where module-relative paths point at the wrong tree.
 const load = <T>(name: string, fallback: T): T => {
-  const p = join(ROOT, "output", name);
+  const p = join(process.cwd(), "output", name);
   return existsSync(p) ? (JSON.parse(readFileSync(p, "utf8")) as T) : fallback;
 };
 

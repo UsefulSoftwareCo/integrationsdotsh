@@ -6,3 +6,12 @@ dist/
 .dev.vars
 .wrangler/
 .reference/
+
+# Derived by `bun run normalize` (runs as part of every build) — not source.
+# output/tools/ and output/favicons.json stay tracked: they're slow network
+# caches (extract-tools / validate-favicons) that normalize only reads.
+output/cli.json
+output/graphql.json
+output/index.json
+output/mcp.json
+output/openapi.json

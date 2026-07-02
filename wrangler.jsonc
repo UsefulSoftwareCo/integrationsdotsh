@@ -1,7 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "integrationsdotsh",
-  "main": "./worker/index.ts",
+  // The Astro build emits the Worker (our worker/entry.ts wrapped around the
+  // app) into dist/_worker.js; .assetsignore keeps it out of the asset upload.
+  "main": "./dist/_worker.js/index.js",
   "compatibility_date": "2025-04-01",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
@@ -17,9 +19,6 @@
   ],
   "observability": {
     "enabled": true
-  },
-  "ai": {
-    "binding": "AI"
   },
   "durable_objects": {
     "bindings": [{ "name": "MCP", "class_name": "McpDurableObject" }]

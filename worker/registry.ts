@@ -44,8 +44,8 @@ const Discover = Tool.make("discover", {
 export const toolkit = Toolkit.make(Detect, Discover);
 
 const HandlersLayer = toolkit.toLayer({
-  detect: ({ domain }) => runDetect(domain),
-  discover: ({ domain }) => runDiscover(domain),
+  detect: ({ domain }: { domain: string }) => runDetect(domain),
+  discover: ({ domain }: { domain: string }) => runDiscover(domain),
 } as never);
 
 const McpLayer = Layer.mergeAll(

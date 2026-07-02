@@ -185,7 +185,7 @@ const CREDENTIAL_PROPS = {
   type: { type: "string", description: "api_key | basic | bearer | oauth2 | oauth2_cc | jwt | app | two_step | signature | aws_sigv4 | compound" },
   label: { type: "string" },
   generateUrl: { type: "string", description: "the page where the user mints/registers this credential" },
-  setup: { type: "string", description: "markdown: where to go, what to click, gotchas — the human acquisition guide" },
+  setup: { type: "string", description: "markdown: where to go, what to click, gotchas — the human acquisition guide. Write EVERY URL as a markdown link [label](https://…), never a bare URL. Put literal values (header names, token prefixes, scopes, endpoint URLs the user pastes into config) in `backticks`." },
   acquisition: { type: "string", description: "manual (default) | ambient (env-injected, e.g. CI tokens)" },
 };
 

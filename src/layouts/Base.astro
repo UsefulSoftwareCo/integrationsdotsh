@@ -1,6 +1,10 @@
 ---
-import { stars } from "~/lib/github.ts";
-import { GLOBAL_CSS, FONT_HEAD, navHtml, footerHtml, FOOTER_JS, ANALYTICS_JS } from "~/lib/chrome.ts";
+// The one shell every page renders through — prerendered catalog pages and
+// worker-SSR'd discovery pages alike, so there is nothing to drift.
+import "~/styles/global.css";
+import Nav from "~/components/Nav.astro";
+import Footer from "~/components/Footer.astro";
+import { ANALYTICS_JS } from "~/lib/analytics.ts";
 
 interface Props {
   title: string;
@@ -33,19 +37,20 @@ const canonical = path ? new URL(path, Astro.site).href : undefined;
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/svg+xml" href="/favicon-light.svg" media="(prefers-color-scheme: dark)" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <Fragment set:html={FONT_HEAD} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
     <script is:inline set:html={ANALYTICS_JS} />
-    <!-- Shared chrome — single source of truth in src/lib/chrome.ts, also used
-         by the worker-rendered surface pages so they never drift. -->
-    <style is:global set:html={GLOBAL_CSS}></style>
   </head>
   <body>
     <div class="frame-guides"></div>
-    <Fragment set:html={navHtml(stars)} />
+    <Nav />
     <main>
       <slot />
     </main>
-    <Fragment set:html={footerHtml()} />
-    <script is:inline set:html={FOOTER_JS} />
+    <Footer />
   </body>
 </html>

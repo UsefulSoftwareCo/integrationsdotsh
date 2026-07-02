@@ -61,6 +61,12 @@ const mono = (d: string) => (d[0] || "?").toUpperCase();
           </tr>
         ))}
       </tbody>
+      <!-- Whatever you typed, if it isn't already a domain — click to open it
+           (un-cataloged domains land on the 404/discover page). tfoot always
+           renders below the paginated tbody. -->
+      <tfoot>
+        <tr id="typeahead" class="ta-row" hidden></tr>
+      </tfoot>
     </table>
     <div id="sentinel" aria-hidden="true"></div>
     <p class="status" id="status">{total.toLocaleString()} domains</p>
@@ -71,18 +77,26 @@ const mono = (d: string) => (d[0] || "?").toUpperCase();
   // Progressive enhancement over the server-rendered first page: live search,
   // kind filter, and infinite scroll — all over /api/domains.json (the same
   // query layer the page rendered from).
-  const PAGE = 80;
-  const tbody = document.getElementById("tbody");
-  const q = document.getElementById("q") as HTMLInputElement;
-  const status = document.getElementById("status");
-  const sentinel = document.getElementById("sentinel");
-  const kindsNav = document.getElementById("kinds");
+  interface DomainRow {
+    domain: string;
+    icon: string | null;
+    formats: Record<string, number>;
+    description: string;
+  }
 
-  const TLABEL = { mcp: "MCP", openapi: "API", graphql: "GraphQL", cli: "CLI" };
+  const PAGE = 80;
+  const tbody = document.getElementById("tbody")!;
+  const q = document.getElementById("q") as HTMLInputElement;
+  const status = document.getElementById("status")!;
+  const sentinel = document.getElementById("sentinel")!;
+  const kindsNav = document.getElementById("kinds")!;
+  const typeahead = document.getElementById("typeahead")!;
+
+  const TLABEL: Record<string, string> = { mcp: "MCP", openapi: "API", graphql: "GraphQL", cli: "CLI" };
   const TORDER = ["mcp", "openapi", "graphql", "cli"];
 
-  let all = [];
-  let filtered = [];
+  let all: DomainRow[] = [];
+  let filtered: DomainRow[] = [];
   let shown = PAGE; // first PAGE rows are server-rendered
   let kind = "";
   let term = "";
@@ -94,10 +108,12 @@ const mono = (d: string) => (d[0] || "?").toUpperCase();
   for (const b of kindsNav.querySelectorAll("button"))
     b.classList.toggle("active", (b.dataset.kind ?? "") === kind);
 
-  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const dpath = (d) => `/${encodeURIComponent(d)}/`;
+  const esc = (s: unknown) =>
+    String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+  const dpath = (d: string) => `/${encodeURIComponent(d)}/`;
+  const isDomain = (s: string) => /^([a-z0-9-]+\.)+[a-z]{2,}$/i.test(s);
 
-  const rowHtml = (g) => {
+  const rowHtml = (g: DomainRow) => {
     const L = esc((g.domain[0] || "?").toUpperCase());
     const icon = g.icon
       ? `<img class="c-fav" src="${esc(g.icon)}" alt="" loading="lazy" width="18" height="18" onerror="this.outerHTML='<span class=&quot;ph&quot;>${L}</span>'">`
@@ -107,14 +123,36 @@ const mono = (d: string) => (d[0] || "?").toUpperCase();
     return `<tr><td class="c-icon">${icon}</td><td class="c-name"><a href="${dpath(g.domain)}">${esc(g.domain)}</a></td><td class="c-chips">${chips}</td></tr>`;
   };
 
-  const render = (reset) => {
+  // The "go to what you typed" row — shown whenever the term isn't already a
+  // known domain. Clicking opens /{term}/ (the 404/discover page if new).
+  const updateTypeahead = () => {
+    const t = term.trim().toLowerCase();
+    const exists = !!t && all.some((g) => g.domain.toLowerCase() === t);
+    if (t && isDomain(t) && !exists) {
+      const L = esc((t[0] || "?").toUpperCase());
+      typeahead.innerHTML =
+        `<td class="c-icon"><span class="ph">${L}</span></td>` +
+        `<td class="c-name"><a href="${dpath(t)}">${esc(t)}</a></td>` +
+        `<td class="c-chips"><span class="ta-go">discover →</span></td>`;
+      typeahead.hidden = false;
+    } else {
+      typeahead.hidden = true;
+    }
+  };
+
+  const render = (reset: boolean) => {
     if (reset) { tbody.innerHTML = ""; shown = 0; }
     const next = filtered.slice(shown, shown + PAGE);
     tbody.insertAdjacentHTML("beforeend", next.map(rowHtml).join(""));
     shown += next.length;
-    status.textContent = filtered.length
-      ? `${filtered.length.toLocaleString()} domain${filtered.length === 1 ? "" : "s"}`
-      : "No matches.";
+    if (filtered.length) {
+      status.textContent = `${filtered.length.toLocaleString()} domain${filtered.length === 1 ? "" : "s"}`;
+    } else {
+      const t = term.trim();
+      // Valid domain not in the registry → the discover row offers it. Otherwise
+      // nudge toward a full domain (that's the path to finding something new).
+      status.textContent = isDomain(t.toLowerCase()) ? "Not in the registry yet — discover it below." : "Enter a valid domain to search.";
+    }
   };
 
   const io = new IntersectionObserver((entries) => {
@@ -132,16 +170,18 @@ const mono = (d: string) => (d[0] || "?").toUpperCase();
     term.trim() ? u.searchParams.set("q", term.trim()) : u.searchParams.delete("q");
     history.replaceState(null, "", u);
     render(true);
+    updateTypeahead();
   };
 
-  fetch("/api/domains.json").then((r) => r.json()).then((data) => {
+  fetch("/api/domains.json").then((r) => r.json()).then((data: DomainRow[]) => {
     all = data;
     if (kind || term.trim()) apply();
     else { filtered = all; status.textContent = `${all.length.toLocaleString()} domains`; }
+    updateTypeahead();
   });
 
-  let to = 0;
-  q.addEventListener("input", () => { term = q.value; clearTimeout(to); to = setTimeout(apply, 90); });
+  let to: ReturnType<typeof setTimeout> | undefined;
+  q.addEventListener("input", () => { term = q.value; updateTypeahead(); clearTimeout(to); to = setTimeout(apply, 90); });
   kindsNav.addEventListener("click", (e) => {
     const btn = (e.target as HTMLElement).closest("button");
     if (!btn) return;
@@ -227,6 +267,11 @@ const mono = (d: string) => (d[0] || "?").toUpperCase();
   }
   :global(.c-chips .chip:hover) { color: var(--gray-1000); border-color: var(--gray-300); }
   :global(.c-chips .chip .n) { opacity: 0.5; }
+
+  /* "go to what you typed" row (cells set via JS → :global) */
+  :global(.ta-row[hidden]) { display: none; }
+  :global(table.rows tfoot td) { border-top: 1px solid var(--gray-100); }
+  :global(.ta-go) { font-family: var(--font-mono); font-size: 12px; color: var(--gray-400); }
 
   .status { color: var(--gray-400); font-family: var(--font-mono); font-size: 12px; margin: 16px 0 0; }
   #sentinel { height: 1px; }

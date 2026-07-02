@@ -1,0 +1,42 @@
+/* Discovery island styles (CTA, loading, surface list, credentials) — shared by
+   the domain page, the surface detail page, and the 404/"discover it live" page.
+   Global (not Astro-scoped) because the markup renders inside React islands. */
+
+.auth-cta { padding: 18px 0 4px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+.auth-cta-text { margin: 0; color: var(--gray-500); font-size: 14px; line-height: 1.55; }
+.auth-cta-text b { color: var(--gray-900); font-weight: 500; }
+.auth-btn { font-family: var(--font-mono); font-size: 12.5px; color: var(--gray-1000); background: var(--white); border: 1px solid var(--gray-200); border-radius: 7px; padding: 7px 13px; cursor: pointer; text-decoration: none; display: inline-block; transition: border-color 0.12s, color 0.12s; }
+.auth-btn:hover { border-color: var(--gray-400); }
+.auth-loading { padding: 20px 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 11px; align-items: center; }
+.auth-loading-text { font-size: 14px; color: var(--gray-700); }
+.auth-loading-sub { grid-column: 2; font-family: var(--font-mono); font-size: 11.5px; color: var(--gray-400); }
+.auth-loading .auth-btn { grid-column: 2; justify-self: start; margin-top: 8px; }
+.auth-spinner { width: 13px; height: 13px; border: 1.5px solid var(--gray-200); border-top-color: var(--gray-500); border-radius: 50%; animation: auth-spin 0.7s linear infinite; }
+@keyframes auth-spin { to { transform: rotate(360deg); } }
+.auth-loading-live { padding: 4px 0 16px; border-bottom: 1px solid var(--gray-100); margin-bottom: 18px; }
+.disc-summary { margin: 8px 0 22px; font-size: 14.5px; color: var(--gray-700); line-height: 1.6; max-width: 640px; }
+.disc-sec { margin-top: 40px; max-width: 760px; scroll-margin-top: 24px; }
+.disc-list { list-style: none; padding: 0; margin: 0; }
+.disc-entry { border-bottom: 1px solid var(--gray-100); padding: 13px 0; }
+.disc-entry-head { display: flex; align-items: baseline; gap: 11px; }
+.disc-ename { font-weight: 500; font-size: 14.5px; color: var(--gray-1000); text-decoration: none; }
+a.disc-ename:hover { text-decoration: underline; text-underline-offset: 3px; }
+.disc-emeta { margin-left: auto; font-family: var(--font-mono); font-size: 12px; color: var(--gray-400); white-space: nowrap; }
+.disc-prov { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.03em; text-transform: uppercase; padding: 1px 5px; border-radius: 4px; cursor: default; }
+.disc-prov-det { color: var(--gray-700); border: 1px solid var(--gray-200); }
+.disc-prov-disc { color: var(--gray-400); }
+.disc-creds { margin-top: 26px; padding-top: 6px; }
+.disc-cred { border: 1px solid var(--gray-100); border-radius: 10px; padding: 14px 18px; margin-bottom: 10px; }
+.disc-cred-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.disc-cred-label { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+.disc-ctype { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: lowercase; color: var(--gray-500); border: 1px solid var(--gray-200); border-radius: 4px; padding: 1px 5px; }
+.disc-cred-get { margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; color: var(--gray-1000); text-decoration: none; white-space: nowrap; border: 1px solid var(--gray-200); border-radius: 6px; padding: 3px 9px; transition: border-color 0.12s, background 0.12s; }
+.disc-cred-get:hover { border-color: var(--gray-400); background: var(--gray-25); }
+.disc-setup { margin-top: 10px; }
+.disc-setup-h { font-size: 13px; font-weight: 600; color: var(--gray-1000); margin: 8px 0 4px; }
+.disc-setup-h:first-child { margin-top: 0; }
+.disc-setup-p { margin: 4px 0; font-size: 13.5px; color: var(--gray-700); line-height: 1.6; }
+.disc-setup-gap { height: 4px; }
+.disc-ic { font-family: var(--font-mono); font-size: 12px; color: var(--gray-700); background: var(--gray-25); border: 1px solid var(--gray-100); border-radius: 4px; padding: 0 4px; }
+.disc-link { color: var(--gray-1000); text-decoration: none; }
+.disc-link:hover { text-decoration: underline; text-underline-offset: 2px; }

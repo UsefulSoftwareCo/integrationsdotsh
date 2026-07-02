@@ -1,0 +1,209 @@
+---
+// Detail page for a DISCOVERED surface — rendered on demand in the Worker.
+//
+// Discovered surfaces live in KV (not the static catalog), so they have no
+// pre-built page. This route renders one from the stored result at
+// `/{domain}/{surface-slug}/` — name, locator, and the per-surface auth
+// (which credential, how bound) + the referenced credentials. Live discovery
+// (KV) wins; the static-catalog baseline (/disc/{domain}.json) is the fallback.
+//
+// Same Base layout, same components, same CSS as every prerendered page —
+// values from the LLM agent are just props; Astro escapes them like any other.
+import Base from "~/layouts/Base.astro";
+import Breadcrumb from "~/components/Breadcrumb.astro";
+import Setup from "~/components/surface/Setup.tsx";
+import { faviconFor } from "~/lib/favicon.ts";
+import {
+  SURFACE_TYPE_LABEL,
+  connectCmd,
+  hostOf,
+  credCta,
+  mechanicsLine,
+  slugifySurface,
+  type Credential,
+  type DiscoveryDoc,
+  type Surface,
+} from "~/lib/surface-view.ts";
+import "~/styles/discovery.css";
+
+export const prerender = false;
+
+const runtime = Astro.locals.runtime;
+const domain = decodeURIComponent(Astro.params.domain ?? "").trim().toLowerCase();
+const slug = decodeURIComponent(Astro.params.surface ?? "");
+
+// Only `/{something.with.a.dot}/{slug}/` is a surface page; anything else is a
+// plain 404 (Astro renders 404.astro for rewrites to a missing route).
+const looksLikeDomain = domain.includes(".");
+
+const find = (doc?: DiscoveryDoc | null) => (doc?.surfaces ?? []).find((s) => slugifySurface(s.name) === slug);
+
+let surface: Surface | undefined;
+let creds: Record<string, Credential> = {};
+
+if (looksLikeDomain && runtime) {
+  // Live discovery (KV) wins; fall back to the static catalog baseline.
+  const raw = await runtime.env.DISCOVERY.get(domain);
+  if (raw) {
+    const stored = JSON.parse(raw) as { result?: DiscoveryDoc };
+    surface = find(stored.result);
+    creds = stored.result?.credentials ?? {};
+  }
+  if (!surface) {
+    const base = await runtime.env.ASSETS.fetch(
+      new URL(`/disc/${encodeURIComponent(domain)}.json`, Astro.url.origin).href,
+    );
+    if (base.ok) {
+      const baseline = (await base.json()) as DiscoveryDoc;
+      surface = find(baseline);
+      if (surface && Object.keys(creds).length === 0) creds = baseline.credentials ?? {};
+    }
+  }
+}
+
+// No such surface → the prerendered 404 (the adapter serves /404 from assets).
+if (!surface) return new Response(null, { status: 404 });
+
+const typeLabel = SURFACE_TYPE_LABEL[surface.type] ?? surface.type;
+const letter = (surface.name[0] ?? "?").toUpperCase();
+const connect = connectCmd(surface);
+const usedCredIds = surface.auth.status === "required" ? surface.auth.entries.flatMap((e) => e.use.map((u) => u.id)) : [];
+const credList = usedCredIds.filter((id, i) => usedCredIds.indexOf(id) === i && creds[id]).map((id) => creds[id]);
+
+const detailRows: { label: string; value: string; kind: "code" | "link" | "text"; linkLabel?: string }[] = [];
+if (surface.url) detailRows.push({ label: surface.type === "mcp" || surface.type === "graphql" ? "Endpoint" : "URL", value: surface.url, kind: "code" });
+if (surface.transports?.length) detailRows.push({ label: "Transport", value: surface.transports.join(", "), kind: "text" });
+if (surface.spec)
+  detailRows.push(
+    surface.spec === "introspection"
+      ? { label: "Spec", value: "introspection", kind: "text" }
+      : { label: "Spec", value: surface.spec, kind: "link", linkLabel: hostOf(surface.spec) || "spec" },
+  );
+if (surface.command) detailRows.push({ label: "Command", value: surface.command, kind: "code" });
+if (surface.docs) detailRows.push({ label: "Docs", value: surface.docs, kind: "link" });
+
+const title = `${surface.name} — ${typeLabel}`;
+const description = `${surface.name} on ${domain}: a ${typeLabel} surface and how to authenticate.`;
+Astro.response.headers.set("cache-control", "public, max-age=60");
+---
+
+<Base title={title} description={description}>
+  <div class="container">
+    <Breadcrumb segments={[{ label: "registry", href: "/" }, { label: domain, href: `/${domain}/` }, { label: surface.name }]} />
+
+    <header class="head">
+      <div class="favicon">
+        <span class="fav-letter">{letter}</span>
+        <img src={faviconFor(domain)} width="22" height="22" alt="" loading="lazy" onerror="this.remove()" />
+      </div>
+      <div>
+        <h1>{surface.name}</h1>
+        <p class="meta">
+          <span>{typeLabel}</span>
+          {surface.basis.via === "detected" ? (
+            <span class="disc-prov disc-prov-det" title={`Detected via ${surface.basis.signal} — re-verifiable`}>detected</span>
+          ) : (
+            <span class="disc-prov disc-prov-disc" title={surface.basis.evidence?.length ? `Read from: ${surface.basis.evidence.join(", ")}` : "Read from docs"}>discovered</span>
+          )}
+        </p>
+      </div>
+    </header>
+
+    {connect && (
+      <section>
+        <div class="sec-header"><span class="sec-label">{connect.label}</span></div>
+        <pre class="code-block connect-cmd">{connect.cmd}</pre>
+      </section>
+    )}
+
+    <section>
+      <div class="sec-header"><span class="sec-label">Authentication</span></div>
+      {surface.auth.status === "unknown" && <p class="muted">Authentication not yet determined.</p>}
+      {surface.auth.status === "none" && (
+        <div class="auth-row auth-none">
+          <span class="auth-use">No auth — public</span>
+          {surface.auth.basis.via === "detected" ? (
+            <span class="disc-prov disc-prov-det prov-end" title={`Detected via ${surface.auth.basis.signal} — re-verifiable`}>detected</span>
+          ) : (
+            <span class="disc-prov disc-prov-disc prov-end">discovered</span>
+          )}
+        </div>
+      )}
+      {surface.auth.status === "required" &&
+        surface.auth.entries.map((e) => (
+          <div class="auth-row">
+            <span class="auth-use">
+              {e.use.map((u, i) => (
+                <>
+                  {i > 0 && <span class="and">+</span>}
+                  <span class="use">
+                    <span class="cred">{creds[u.id]?.label ?? u.id}</span>
+                    <code class="mech">{mechanicsLine(u.mechanics)}</code>
+                  </span>
+                </>
+              ))}
+            </span>
+            {e.basis.via === "detected" ? (
+              <span class="disc-prov disc-prov-det prov-end" title={`Detected via ${e.basis.signal} — re-verifiable`}>detected</span>
+            ) : (
+              <span class="disc-prov disc-prov-disc prov-end" title={e.basis.evidence?.length ? `Read from: ${e.basis.evidence.join(", ")}` : "Read from docs"}>discovered</span>
+            )}
+          </div>
+        ))}
+    </section>
+
+    {credList.length > 0 && (
+      <section>
+        <div class="sec-header"><span class="sec-label">Credentials</span></div>
+        {credList.map((c) => (
+          <div class="disc-cred">
+            <div class="disc-cred-head">
+              <span class="disc-cred-label">{c.label}</span>
+              <span class="disc-ctype">{c.type}</span>
+              {c.generateUrl && (
+                <a class="disc-cred-get" href={c.generateUrl} target="_blank" rel="noopener noreferrer" title={hostOf(c.generateUrl)}>
+                  {credCta(c.type)} ↗
+                </a>
+              )}
+            </div>
+            {c.setup && <Setup md={c.setup} />}
+          </div>
+        ))}
+      </section>
+    )}
+
+    {detailRows.length > 0 && (
+      <section>
+        <div class="sec-header"><span class="sec-label">Details</span></div>
+        <dl class="kv">
+          {detailRows.map((r) => (
+            <>
+              <dt>{r.label}</dt>
+              <dd>
+                {r.kind === "code" && <code>{r.value}</code>}
+                {r.kind === "link" && (
+                  <a href={r.value} target="_blank" rel="noopener noreferrer">{r.linkLabel ?? r.value}</a>
+                )}
+                {r.kind === "text" && r.value}
+              </dd>
+            </>
+          ))}
+        </dl>
+      </section>
+    )}
+  </div>
+</Base>
+
+<style>
+  section { margin-top: 48px; max-width: 760px; }
+  .connect-cmd { margin: 16px 0 0; white-space: pre-wrap; word-break: break-all; }
+  .auth-row { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; padding: 13px 0; border-bottom: 1px solid var(--gray-100); }
+  .auth-use { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 9px; }
+  .use { display: inline-flex; align-items: baseline; gap: 6px; }
+  .and { font-family: var(--font-mono); font-size: 12px; color: var(--gray-400); }
+  .cred { font-size: 13.5px; color: var(--gray-1000); font-weight: 500; }
+  .mech { font-family: var(--font-mono); font-size: 12px; color: var(--gray-700); background: var(--gray-25); border: 1px solid var(--gray-100); border-radius: 5px; padding: 1px 6px; word-break: break-all; }
+  .auth-none .auth-use { font-size: 13px; color: var(--gray-500); font-weight: 400; }
+  .muted { color: var(--gray-400); font-size: 13.5px; margin: 14px 0 0; }
+  .prov-end { margin-left: auto; }
+</style>

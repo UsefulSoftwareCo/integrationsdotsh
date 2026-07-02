@@ -1,0 +1,25 @@
+---
+// Top nav: wordmark + GitHub star badge. Star count comes from getStars() —
+// GitHub API at build time for prerendered pages, the baked /disc/meta.json
+// for worker-rendered pages — so both always show the same number.
+import { REPO_URL, getStars } from "~/lib/github.ts";
+import { formatStars } from "~/lib/format.ts";
+
+const stars = await getStars(Astro.locals.runtime?.env);
+---
+
+<nav class="site">
+  <div class="container">
+    <a class="wordmark" href="/">integrations.sh</a>
+    <a class="ghstar" href={REPO_URL} target="_blank" rel="noopener">
+      <svg class="ghstar-ico" width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+        <path
+          fill="#e3b341"
+          d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"
+        ></path>
+      </svg>
+      <span>star on github</span>
+      {stars != null && <span class="ghstar-n">{formatStars(stars)}</span>}
+    </a>
+  </div>
+</nav>

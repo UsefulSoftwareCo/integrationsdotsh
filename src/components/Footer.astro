@@ -1,0 +1,73 @@
+---
+// Compact sticky footer — fixed bar docked to the bottom that auto-hides on
+// scroll-down / reveals on scroll-up, and expands on click for secondary links.
+// Concept from AnswerOverflow's CompactStickyFooter, restyled registry-minimal.
+// Styles live in global.css under "compact sticky footer".
+import { REPO_URL } from "~/lib/github.ts";
+---
+
+<footer id="sfooter" class="sf">
+  <div class="container">
+    <div class="sf-bar" role="button" tabindex="0" aria-controls="sf-panel" aria-expanded="false" aria-label="Toggle footer links">
+      <span class="sf-mark">integrations.sh</span>
+      <span class="sf-toggle">
+        <span class="sf-more"><span class="sf-more-a">more</span><span class="sf-more-b">less</span></span>
+        <svg class="sf-chev" width="11" height="11" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4 10l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </span>
+    </div>
+    <div class="sf-panel" id="sf-panel">
+      <div class="sf-panel-clip">
+        <div class="sf-panel-inner">
+          <p class="sf-tag">Services your agent can reach — official APIs, GraphQL endpoints, and MCP servers, with structured credential facts.</p>
+          <nav class="sf-links" aria-label="Footer">
+            <a href="/">registry</a>
+            <a href="/integrations.sh/">connect your agent</a>
+            <a href={REPO_URL} target="_blank" rel="noopener">github</a>
+          </nav>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // The hide/show logic runs DIRECTLY in the scroll handler — deliberately not
+  // wrapped in requestAnimationFrame, since rAF is throttled/paused in some
+  // embedded preview surfaces, which would silently freeze the auto-hide while
+  // scrolling. The work is cheap (one scrollY read + an occasional class
+  // toggle), so a direct passive handler is fine. The footer is always revealed
+  // at the very top and within ~one footer-height of the page bottom, so a long
+  // infinite-scroll list still ends on a visible footer.
+  const f = document.getElementById("sfooter")!;
+  const bar = f.querySelector<HTMLElement>(".sf-bar")!;
+  let lastY = window.scrollY;
+  let open = false;
+  const set = (v: boolean) => {
+    open = v;
+    f.classList.toggle("sf-open", v);
+    bar.setAttribute("aria-expanded", String(v));
+  };
+  bar.addEventListener("click", () => set(!open));
+  bar.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      set(!open);
+    }
+  });
+  const update = () => {
+    const y = window.scrollY;
+    const d = document.documentElement;
+    const atEdge = y <= 8 || y + window.innerHeight >= d.scrollHeight - 96;
+    if (!atEdge && y > lastY && y > 120) {
+      f.classList.add("sf-hidden");
+      if (open) set(false);
+    } else if (atEdge || y < lastY) {
+      f.classList.remove("sf-hidden");
+    }
+    lastY = y;
+  };
+  window.addEventListener("scroll", update, { passive: true });
+  update();
+</script>

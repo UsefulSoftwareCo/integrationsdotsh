@@ -12,8 +12,10 @@
  * Types come from the canonical Effect Schema (`import type`, so `effect` never
  * enters the client bundle).
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import type { Basis, Credential, Surface, AuthStatus, DiscoveryResult } from "../lib/discovery-schema.ts";
+import { credCta, hostOf, slugifySurface } from "../lib/surface-view.ts";
+import Setup from "./surface/Setup.tsx";
 
 type DiscoverData = Partial<Pick<DiscoveryResult, "summary" | "credentials" | "surfaces">>;
 type Creds = DiscoveryResult["credentials"];
@@ -39,15 +41,6 @@ const KIND_LABEL: Record<string, string> = { mcp: "MCP servers", openapi: "REST 
 /** surface.type → page section kind (rest folds into openapi). */
 const kindOf = (t: string): string => (t === "rest" ? "openapi" : t);
 const norm = (s: string) => s.trim().toLowerCase();
-
-function hostOf(url?: string): string {
-  if (!url) return "";
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-}
 
 function surfaceIdentity(s: Surface): string | undefined {
   switch (s.type) {
@@ -101,47 +94,6 @@ function Prov({ p }: { p: Basis }) {
   );
 }
 
-/** Minimal safe markdown for credential `setup`: ## headers, **bold**, `code`, [links](url). */
-function Setup({ md }: { md: string }) {
-  return (
-    <div className="disc-setup">
-      {md.split("\n").map((line, i) => {
-        const t = line.trim();
-        if (!t) return <div key={i} className="disc-setup-gap" />;
-        if (t.startsWith("#"))
-          return (
-            <div key={i} className="disc-setup-h">
-              {inline(t.replace(/^#+\s*/, ""))}
-            </div>
-          );
-        return (
-          <p key={i} className="disc-setup-p">
-            {inline(t)}
-          </p>
-        );
-      })}
-    </div>
-  );
-}
-
-function inline(text: string): ReactNode[] {
-  return text
-    .split(/(\[[^\]]+\]\([^)]+\)|`[^`]+`|\*\*[^*]+\*\*)/g)
-    .filter(Boolean)
-    .map((tok, i) => {
-      let m = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(tok);
-      if (m)
-        return (
-          <a key={i} className="disc-link" href={m[2]} target="_blank" rel="noopener noreferrer">
-            {m[1]}
-          </a>
-        );
-      if ((m = /^`([^`]+)`$/.exec(tok))) return <code key={i} className="disc-ic">{m[1]}</code>;
-      if ((m = /^\*\*([^*]+)\*\*$/.exec(tok))) return <strong key={i}>{m[1]}</strong>;
-      return tok;
-    });
-}
-
 interface Entry {
   key: string;
   name: string;
@@ -150,19 +102,12 @@ interface Entry {
   surface?: Surface;
 }
 
-/** Matches the worker's slugifySurface — discovered pages are `/{domain}/{slug}/`. */
-const slugify = (name: string) =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-
 /** Merge catalog + discovered surfaces into per-kind sections. A discovered
  * surface (matched or standalone) links to its worker-SSR'd page; a pure-catalog
  * surface keeps its static `/{kind}/{slug}/` detail page. */
 function buildSections(catalog: CatalogSection[], data: DiscoverData | null, domain: string) {
   const surfaces = data?.surfaces ?? [];
-  const discPage = (s: Surface) => `/${encodeURIComponent(domain)}/${slugify(s.name)}/`;
+  const discPage = (s: Surface) => `/${encodeURIComponent(domain)}/${slugifySurface(s.name)}/`;
   const catByKind = new Map(catalog.map((s) => [s.kind, s.items]));
   const out: { kind: string; label: string; entries: Entry[] }[] = [];
   for (const kind of KIND_ORDER) {
@@ -177,7 +122,7 @@ function buildSections(catalog: CatalogSection[], data: DiscoverData | null, dom
       }
       // Catalog-only surface — its detail page is served from the baseline JSON
       // by the same `/{domain}/{slug}/` route (worker), keyed by its name.
-      return { key: `c${i}`, name: it.name, href: `/${encodeURIComponent(domain)}/${slugify(it.name)}/`, meta: it.meta };
+      return { key: `c${i}`, name: it.name, href: `/${encodeURIComponent(domain)}/${slugifySurface(it.name)}/`, meta: it.meta };
     });
     discovered.forEach((s, idx) => {
       if (!used.has(idx)) entries.push({ key: `d${idx}`, name: s.name, href: discPage(s), meta: surfaceMeta(s), surface: s });
@@ -205,7 +150,7 @@ function EntryRow({ e }: { e: Entry }) {
   );
 }
 
-export default function Surfaces({ domain, catalog }: { domain: string; catalog: CatalogSection[] }) {
+export default function Surfaces({ domain, catalog = [] }: { domain: string; catalog?: CatalogSection[] }) {
   const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [data, setData] = useState<DiscoverData | null>(null);
   const [progress, setProgress] = useState("");
@@ -232,8 +177,8 @@ export default function Surfaces({ domain, catalog }: { domain: string; catalog:
   }, [domain]);
 
   async function run() {
-    // The site's key conversion — posthog is the snippet global from chrome.ts
-    // (absent on localhost, hence the guard).
+    // The site's key conversion — posthog is the snippet global from
+    // src/lib/analytics.ts (absent on localhost, hence the guard).
     (window as { posthog?: { capture: (e: string, p?: Record<string, unknown>) => void } }).posthog?.capture("map_surface_clicked", { domain });
     setState("loading");
     setProgress("Starting…");
@@ -358,8 +303,8 @@ export default function Surfaces({ domain, catalog }: { domain: string; catalog:
                 <span className="disc-cred-label">{c.label}</span>
                 <span className="disc-ctype">{c.type}</span>
                 {c.generateUrl && (
-                  <a className="disc-link disc-cred-get" href={c.generateUrl} target="_blank" rel="noopener noreferrer">
-                    {hostOf(c.generateUrl)} ↗
+                  <a className="disc-cred-get" href={c.generateUrl} target="_blank" rel="noopener noreferrer" title={hostOf(c.generateUrl)}>
+                    {credCta(c.type)} ↗
                   </a>
                 )}
               </div>

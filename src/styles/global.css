@@ -1,0 +1,106 @@
+/* Global stylesheet — design tokens + the shared shell (nav, footer, atoms).
+   Imported once by Base.astro, so every page (prerendered or worker-SSR'd)
+   renders through the same layout and picks this up identically. */
+
+:root {
+  --gray-1000: #0a0a0a; --gray-900: #111; --gray-700: #333; --gray-500: #666; --gray-400: #888;
+  --gray-300: #999; --gray-200: #d4d4d4; --gray-100: #eaeaea; --gray-50: #f5f5f5; --gray-25: #fafafa; --white: #fff;
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --container: 1100px; color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --gray-1000: #ededed; --gray-900: #ededed; --gray-700: #c4c4c4; --gray-500: #9a9a9a; --gray-400: #7a7a7a;
+    --gray-300: #5c5c5c; --gray-200: #333333; --gray-100: #1f1f1f; --gray-50: #1a1a1a; --gray-25: #141414; --white: #0a0a0a;
+  }
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { scrollbar-gutter: stable; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--white); color: var(--gray-900); font: 400 15px/1.55 var(--font-sans); -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+a { color: inherit; }
+::selection { background: #dbeafe; color: #0a0a0a; }
+@media (prefers-color-scheme: dark) { ::selection { background: #2e4a6e; color: #ededed; } }
+
+.frame-guides { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+.frame-guides::before, .frame-guides::after { content: ""; position: absolute; top: 0; bottom: 0; width: 1px; background: var(--gray-100); }
+.frame-guides::before { left: calc(50% - var(--container) / 2); }
+.frame-guides::after { right: calc(50% - var(--container) / 2); }
+@media (max-width: 1140px) { .frame-guides { display: none; } }
+.container { max-width: var(--container); margin: 0 auto; padding: 0 40px; position: relative; z-index: 1; }
+
+nav.site { border-bottom: 1px solid var(--gray-100); background: var(--white); position: relative; z-index: 2; }
+nav.site .container { height: 64px; display: flex; align-items: center; gap: 32px; }
+.wordmark { font-family: var(--font-mono); font-size: 14px; font-weight: 500; color: var(--gray-1000); text-decoration: none; white-space: nowrap; }
+.ghstar { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; font-family: var(--font-mono); font-size: 12.5px; color: var(--gray-500); text-decoration: none; border: 1px solid var(--gray-200); border-radius: 7px; padding: 5px 11px; transition: color 0.12s, border-color 0.12s; }
+.ghstar:hover { color: var(--gray-1000); border-color: var(--gray-400); }
+.ghstar-ico { flex-shrink: 0; }
+.ghstar-n { font-variant-numeric: tabular-nums; color: var(--gray-400); padding-left: 8px; border-left: 1px solid var(--gray-200); }
+
+main { flex: 1 0 auto; padding-bottom: 96px; }
+
+/* compact sticky footer — fixed to the bottom, auto-hides on scroll-down /
+   reveals on scroll-up, click to expand. Concept from AnswerOverflow's
+   CompactStickyFooter, restyled minimal. Behavior in Footer.astro's script. */
+footer.sf { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; border-top: 1px solid var(--gray-100); background: var(--white); transform: translateY(0); transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+footer.sf.sf-hidden { transform: translateY(100%); transition-duration: 0.2s; }
+.sf-bar { height: 46px; display: flex; align-items: center; justify-content: space-between; gap: 24px; cursor: pointer; font-family: var(--font-mono); font-size: 12px; color: var(--gray-400); -webkit-user-select: none; user-select: none; }
+.sf-bar:focus-visible { outline: 2px solid var(--gray-300); outline-offset: -4px; border-radius: 4px; }
+.sf-mark { color: var(--gray-400); }
+.sf-toggle { display: inline-flex; align-items: center; gap: 7px; transition: color 0.15s; }
+.sf-bar:hover .sf-toggle { color: var(--gray-1000); }
+.sf-chev { transition: transform 0.15s ease; }
+footer.sf.sf-open .sf-chev { transform: rotate(180deg); }
+.sf-more-b { display: none; }
+footer.sf.sf-open .sf-more-a { display: none; }
+footer.sf.sf-open .sf-more-b { display: inline; }
+.sf-panel { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease; }
+footer.sf.sf-open .sf-panel { grid-template-rows: 1fr; opacity: 1; }
+.sf-panel-clip { overflow: hidden; }
+.sf-panel-inner { padding: 14px 0 18px; border-top: 1px solid var(--gray-100); }
+.sf-tag { margin: 0 0 12px; font-size: 13px; line-height: 1.55; color: var(--gray-500); max-width: 540px; }
+.sf-links { display: flex; flex-wrap: wrap; gap: 9px 22px; font-family: var(--font-mono); font-size: 12px; }
+.sf-links a { color: var(--gray-400); text-decoration: none; transition: color 0.12s; }
+.sf-links a:hover { color: var(--gray-1000); }
+@media (prefers-reduced-motion: reduce) { footer.sf, .sf-chev, .sf-panel { transition: none; } }
+
+/* shared atoms */
+.sec-label { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gray-400); }
+.sec-header { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid var(--gray-100); }
+.sec-note { font-family: var(--font-mono); font-size: 11px; color: var(--gray-400); }
+.crumb { padding: 28px 0 0; font-family: var(--font-mono); font-size: 12px; color: var(--gray-400); }
+.crumb a { color: var(--gray-400); text-decoration: none; }
+.crumb a:hover { color: var(--gray-1000); }
+.crumb .sep { margin: 0 6px; color: var(--gray-200); }
+code { font-family: var(--font-mono); font-size: 0.88em; }
+.code-block { background: var(--gray-25); border: 1px solid var(--gray-100); border-radius: 6px; padding: 13px 16px; overflow-x: auto; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65; color: var(--gray-700); margin: 0; }
+
+/* favicon page header (domain + surface detail) */
+.head { padding: 24px 0 0; display: flex; align-items: flex-start; gap: 16px; max-width: 760px; }
+.favicon { position: relative; width: 40px; height: 40px; border: 1px solid var(--gray-100); border-radius: 8px; display: grid; place-items: center; background: var(--white); flex-shrink: 0; margin-top: 2px; }
+.fav-letter { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 600; color: var(--gray-400); }
+.favicon img { position: relative; z-index: 1; border-radius: 4px; background: var(--white); }
+.head h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.2; margin: 0; word-break: break-word; }
+.head .meta { margin: 6px 0 0; font-family: var(--font-mono); font-size: 12px; color: var(--gray-400); display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+
+/* key/value detail list */
+dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 10px 28px; margin: 18px 0 0; font-size: 14px; }
+dl.kv dt { color: var(--gray-400); font-family: var(--font-mono); font-size: 12.5px; }
+dl.kv dd { margin: 0; min-width: 0; word-break: break-all; }
+dl.kv a { text-decoration: underline; text-underline-offset: 2px; }
+dl.kv a:hover { color: var(--gray-500); }
+dl.kv code { background: var(--gray-50); padding: 1px 6px; border-radius: 3px; font-size: 12.5px; }
+
+/* markdown (marked output / setup prose) */
+.md { line-height: 1.65; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p { margin: 0 0 0.8em; }
+.md a { color: var(--gray-1000); text-decoration: underline; text-underline-offset: 2px; }
+.md a:hover { color: var(--gray-500); }
+.md code { background: var(--gray-50); padding: 1px 5px; border-radius: 3px; font-size: 0.86em; }
+.md pre { background: var(--gray-25); border: 1px solid var(--gray-100); padding: 13px 16px; border-radius: 6px; overflow: auto; font-size: 12.5px; line-height: 1.65; margin: 0.9em 0; }
+.md pre code { background: transparent; padding: 0; }
+.md ul, .md ol { padding-left: 1.3em; margin: 0 0 0.8em; }
+.md strong { color: var(--gray-1000); }
