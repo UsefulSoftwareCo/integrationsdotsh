@@ -6,7 +6,7 @@
     "name": "gh",
     "description": "GitHub's official CLI — repos, issues, PRs, releases, and Actions from the terminal.",
     "url": "https://cli.github.com",
-    "icon": "https://github.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/github.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -33,7 +33,7 @@
     "name": "vercel",
     "description": "Deploy, inspect, and manage Vercel projects and deployments.",
     "url": "https://vercel.com/docs/cli",
-    "icon": "https://vercel.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/vercel.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -60,7 +60,7 @@
     "name": "stripe",
     "description": "Test webhooks, trigger events, and call the Stripe API from the shell.",
     "url": "https://docs.stripe.com/stripe-cli",
-    "icon": "https://stripe.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/stripe.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -87,7 +87,7 @@
     "name": "wrangler",
     "description": "Build and deploy Cloudflare Workers, Pages, and bindings.",
     "url": "https://developers.cloudflare.com/workers/wrangler/",
-    "icon": "https://cloudflare.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/cloudflare.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -114,7 +114,7 @@
     "name": "supabase",
     "description": "Manage Supabase projects, migrations, and local development.",
     "url": "https://supabase.com/docs/reference/cli",
-    "icon": "https://supabase.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/supabase.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -141,7 +141,7 @@
     "name": "netlify",
     "description": "Deploy sites, manage functions, and stream logs on Netlify.",
     "url": "https://docs.netlify.com/cli/get-started/",
-    "icon": "https://netlify.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/netlify.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -168,7 +168,7 @@
     "name": "heroku",
     "description": "Manage Heroku apps, dynos, add-ons, and releases.",
     "url": "https://devcenter.heroku.com/articles/heroku-cli",
-    "icon": "https://heroku.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/heroku.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -195,7 +195,7 @@
     "name": "doctl",
     "description": "DigitalOcean's CLI for droplets, databases, and app platform.",
     "url": "https://docs.digitalocean.com/reference/doctl/",
-    "icon": "https://digitalocean.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/digitalocean.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -222,7 +222,7 @@
     "name": "flyctl",
     "description": "Deploy and scale apps on Fly.io's edge platform.",
     "url": "https://fly.io/docs/flyctl/",
-    "icon": "https://fly.io/favicon.ico",
+    "icon": "https://integrations.sh/logo/fly.io",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -249,7 +249,7 @@
     "name": "railway",
     "description": "Deploy and manage services and environments on Railway.",
     "url": "https://docs.railway.app/develop/cli",
-    "icon": "https://railway.app/favicon.ico",
+    "icon": "https://integrations.sh/logo/railway.app",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -276,7 +276,7 @@
     "name": "pscale",
     "description": "Manage PlanetScale databases, branches, and deploy requests.",
     "url": "https://planetscale.com/docs/reference/planetscale-cli",
-    "icon": "https://planetscale.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/planetscale.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -303,7 +303,7 @@
     "name": "sentry-cli",
     "description": "Upload source maps, manage releases, and send events to Sentry.",
     "url": "https://docs.sentry.io/cli/",
-    "icon": "https://sentry.io/favicon.ico",
+    "icon": "https://integrations.sh/logo/sentry.io",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -330,7 +330,7 @@
     "name": "twilio",
     "description": "Manage Twilio numbers, messaging, and serverless functions.",
     "url": "https://www.twilio.com/docs/twilio-cli/quickstart",
-    "icon": "https://twilio.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/twilio.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -357,7 +357,7 @@
     "name": "doppler",
     "description": "Sync secrets and inject them into local and CI environments.",
     "url": "https://docs.doppler.com/docs/cli",
-    "icon": "https://doppler.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/doppler.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -384,7 +384,7 @@
     "name": "ngrok",
     "description": "Expose local servers to the public internet over secure tunnels.",
     "url": "https://ngrok.com/docs/agent/cli/",
-    "icon": "https://ngrok.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/ngrok.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -411,7 +411,7 @@
     "name": "gcloud",
     "description": "Manage Google Cloud resources, IAM, and deployments.",
     "url": "https://cloud.google.com/sdk/gcloud",
-    "icon": "https://google.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/google.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -438,7 +438,7 @@
     "name": "aws",
     "description": "The AWS command-line interface across every AWS service.",
     "url": "https://docs.aws.amazon.com/cli/",
-    "icon": "https://amazonaws.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/amazonaws.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -465,7 +465,7 @@
     "name": "az",
     "description": "Manage Azure resources, identities, and deployments.",
     "url": "https://learn.microsoft.com/cli/azure/",
-    "icon": "https://azure.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/azure.com",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -492,7 +492,7 @@
     "name": "linear",
     "description": "Create and manage Linear issues and projects from the terminal.",
     "url": "https://linear.app/developers",
-    "icon": "https://linear.app/favicon.ico",
+    "icon": "https://integrations.sh/logo/linear.app",
     "categories": [],
     "feeds": [
       "cli-seed"
@@ -519,7 +519,7 @@
     "name": "shopify",
     "description": "Build, test, and deploy Shopify apps and themes.",
     "url": "https://shopify.dev/docs/api/shopify-cli",
-    "icon": "https://shopify.com/favicon.ico",
+    "icon": "https://integrations.sh/logo/shopify.com",
     "categories": [],
     "feeds": [
       "cli-seed"
