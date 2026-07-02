@@ -15,6 +15,7 @@ import { handle } from "@astrojs/cloudflare/handler";
 import { apiHandler } from "./api.ts";
 import { setChat, setWebBackend, discoverWithProgress } from "./operations.ts";
 import { contextWeb, naiveWeb } from "../src/lib/contextdev.ts";
+import { registrableDomain } from "../src/lib/favicon.ts";
 import type { Surface } from "../src/lib/surface-view.ts";
 import type { EdgeCaches, Env, ExecutionContext } from "./env.ts";
 import { McpDurableObject } from "./mcp-do.ts";
@@ -129,27 +130,33 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 
 /** Fire-and-forget server-side PostHog capture. Browser pageviews come from
  * posthog-js (src/lib/analytics.ts); this covers the callers that never run
- * JS — agents fetching data files, MCP clients, and direct API users. */
-function track(env: Env, ctx: ExecutionContext, request: Request, event: string, properties: Record<string, unknown> = {}): void {
-  if (!env.POSTHOG_KEY) return;
-  ctx.waitUntil(
-    fetch("https://us.i.posthog.com/i/v0/e/", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        api_key: env.POSTHOG_KEY,
-        event,
-        distinct_id: request.headers.get("cf-connecting-ip") || "unknown",
-        properties: {
-          $process_person_profile: false,
-          user_agent: request.headers.get("user-agent") || "unknown",
-          country: request.headers.get("cf-ipcountry") || "unknown",
-          path: new URL(request.url).pathname,
-          ...properties,
-        },
-      }),
-    }).catch(() => {}),
-  );
+ * JS — agents fetching data files, MCP clients, and direct API users.
+ * `apiKeys` routes the event to one or more projects (executor heartbeat is
+ * dual-sent: the executor project owns the DAU series, the integrations
+ * project keeps the site-traffic view). */
+function track(env: Env, ctx: ExecutionContext, request: Request, event: string, properties: Record<string, unknown> = {}, apiKeys?: Array<string | undefined>): void {
+  const keys = [...new Set((apiKeys ?? [env.POSTHOG_KEY]).filter((k): k is string => !!k))];
+  if (keys.length === 0) return;
+  const body = {
+    event,
+    distinct_id: request.headers.get("cf-connecting-ip") || "unknown",
+    properties: {
+      $process_person_profile: false,
+      user_agent: request.headers.get("user-agent") || "unknown",
+      country: request.headers.get("cf-ipcountry") || "unknown",
+      path: new URL(request.url).pathname,
+      ...properties,
+    },
+  };
+  for (const api_key of keys) {
+    ctx.waitUntil(
+      fetch("https://us.i.posthog.com/i/v0/e/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ api_key, ...body }),
+      }).catch(() => {}),
+    );
+  }
 }
 
 export function createExports(manifest: SSRManifest) {
@@ -181,6 +188,65 @@ export function createExports(manifest: SSRManifest) {
     if (url.pathname === "/mcp") {
       track(env, ctx, request, "mcp_request");
       return env.MCP.get(env.MCP.idFromName("mcp")).fetch(request);
+    }
+
+    // Logo proxy — the single logo source for executor clients (and anything
+    // else): /logo/{domain}?theme=light|dark&sz=64. Proxies context.dev Logo
+    // Link, falling back to Google's favicon service when the client id is
+    // missing or the upstream errors. Logo Link's terms forbid persisting
+    // images in our own storage but explicitly allow header-driven browser/CDN
+    // caching, so this uses the edge Cache API with a TTL matching the
+    // upstream's own 24h Cache-Control — no KV/R2.
+    const logoMatch = /^\/logo\/([^/]+)\/?$/.exec(url.pathname);
+    if (logoMatch) {
+      const domain = registrableDomain(decodeURIComponent(logoMatch[1]).trim().toLowerCase());
+      if (!domain) return json({ error: "not a public registrable domain" }, 400);
+      const theme = url.searchParams.get("theme");
+      const size = Math.min(Math.max(Number(url.searchParams.get("sz")) || 64, 16), 256);
+
+      // Normalized cache key: validated domain + the params that affect bytes.
+      const cache = (caches as unknown as EdgeCaches).default;
+      const keyUrl = new URL(`${url.origin}/logo/${domain}`);
+      if (theme === "light" || theme === "dark") keyUrl.searchParams.set("theme", theme);
+      keyUrl.searchParams.set("sz", String(size));
+      keyUrl.searchParams.set("__cv", CACHE_VERSION);
+      const cacheKey = new Request(keyUrl.toString(), { method: "GET" });
+      const cached = await cache.match(cacheKey);
+      if (cached) return cached;
+
+      const isImage = (r: Response) =>
+        r.ok && (r.headers.get("content-type") ?? "").toLowerCase().startsWith("image/");
+      let upstream: Response | null = null;
+      if (env.CONTEXT_DEV_LOGO_CLIENT_ID) {
+        const logoLink = new URL("https://logos.context.dev/");
+        logoLink.searchParams.set("publicClientId", env.CONTEXT_DEV_LOGO_CLIENT_ID);
+        logoLink.searchParams.set("domain", domain);
+        if (theme === "light" || theme === "dark") logoLink.searchParams.set("theme", theme);
+        upstream = await fetch(logoLink, {
+          // Access to the client id is referrer-restricted; identify as the site.
+          headers: { referer: "https://integrations.sh/" },
+          // Logo Link serves originals (2048px PNGs for some brands) — have
+          // Cloudflare downscale to the requested size. Ignored (originals pass
+          // through) when the zone doesn't have Image Resizing.
+          cf: { image: { width: size, height: size, fit: "scale-down" } },
+        } as RequestInit).catch(() => null);
+      }
+      if (!upstream || !isImage(upstream)) {
+        upstream = await fetch(
+          `https://www.google.com/s2/favicons?domain=${domain}&sz=${size}`,
+        ).catch(() => null);
+      }
+      if (!upstream || !isImage(upstream)) return json({ error: "no logo found" }, 404);
+
+      const res = new Response(upstream.body, {
+        headers: {
+          "content-type": upstream.headers.get("content-type") ?? "image/png",
+          "access-control-allow-origin": "*",
+          "cache-control": "public, max-age=86400",
+        },
+      });
+      ctx.waitUntil(cache.put(cacheKey, res.clone()));
+      return res;
     }
 
     // Self-describe via the same discovery format the catalog indexes: point at
@@ -300,12 +366,15 @@ export function createExports(manifest: SSRManifest) {
       return res;
     }
 
-    // Analytics on fallthrough: `hit` for executor agents (kept as-is —
-    // pre-launch dashboards query it), `data_fetch` for any non-browser caller
-    // pulling the machine-readable files. Browser pageviews are client-side.
+    // Analytics on fallthrough: `hit` for executor agents, `data_fetch` for
+    // any other non-browser caller pulling the machine-readable files.
+    // Browser pageviews are client-side. The `hit` heartbeat doubles as the
+    // executor DAU signal, so it dual-sends: executor project (canonical DAU
+    // series, queried by the executor dashboards) + integrations project
+    // (integrations.sh's own traffic view).
     const agent = request.headers.get("user-agent") || "unknown";
     if (agent.includes("executor")) {
-      track(env, ctx, request, "hit");
+      track(env, ctx, request, "hit", {}, [env.POSTHOG_EXECUTOR_KEY, env.POSTHOG_KEY]);
     } else if (!agent.includes("Mozilla") && (/\.json$/.test(url.pathname) || url.pathname.startsWith("/.well-known/"))) {
       // Browsers (the homepage fetches /api/domains.json) identify as Mozilla;
       // what's left is curl, scripts, and agents pulling the data files.

@@ -45,6 +45,12 @@ export interface Env {
   /** PostHog project token for server-side captures (same value as the public
    * client token — it can only ingest). */
   POSTHOG_KEY?: string;
+  /** PostHog token of the EXECUTOR product project. The executor-UA `hit`
+   * heartbeat is the executor DAU/WAU signal, so it must land there — the
+   * executor dashboards ("Executor — Stats", active machines by surface)
+   * query it. Everything else goes to the integrations.sh project via
+   * POSTHOG_KEY. Optional so a missing secret degrades to site-only. */
+  POSTHOG_EXECUTOR_KEY?: string;
   MCP: DurableObjectNamespace;
   /** Durable per-domain store of discovery results — written on completion,
    * read at page render (merged with the static catalog). */
@@ -54,4 +60,9 @@ export interface Env {
   CONTEXT_DEV_API_KEY?: string;
   /** OpenAI API key (secret). Powers the discover extraction model. */
   OPENAI_API_KEY?: string;
+  /** context.dev Logo Link public client id (brandLL_…) for the /logo proxy.
+   * Frontend-safe by design (access is referrer-restricted upstream), but kept
+   * in env so rotating it is a secret update, not a deploy. Optional: when
+   * missing, /logo serves the Google favicon fallback only. */
+  CONTEXT_DEV_LOGO_CLIENT_ID?: string;
 }
